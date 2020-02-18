@@ -1,9 +1,15 @@
-#-- for now these MUST point to the included "samtools-0.x.x" and "gclib" sub-directories
-BAM  := ./samtools-0.1.18
-GDIR := ./gclib
-#--
+SAM  := ../htslib
+GDIR := ../gclib
 
-INCDIRS := -I. -I${GDIR} -I${BAM}
+#--speeds up de/compression of BAM/CRAM
+# leave it blank if not available
+#LIBDEFLATE :=
+LIBDEFLATE := $(if $(LIBDEFLATE),$(LIBDEFLATE),/ccb/sw/lib/libdeflate.a)
+
+SAMINC := $(if $(SAMINC),$(SAMINC),${SAM})
+SAMLIB := $(if $(SAMLIB),$(SAMLIB),${SAM})
+
+INCDIRS := -I. -I${GDIR} -I${SAMINC}
 
 CXX   := $(if $(CXX),$(CXX),g++)
 
@@ -24,9 +30,9 @@ LINKER  := $(if $(LINKER),$(LINKER),g++)
 
 LDFLAGS := $(if $(LDFLAGS),$(LDFLAGS),-g)
 
-LDFLAGS += -L${BAM}
+LDFLAGS += -L${SAMLIB}
 
-LIBS    := -lbam -lz
+LIBS :=${SAMLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto
 
 ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
  NOTHREADS=1
@@ -54,7 +60,7 @@ endif
 # Non-windows systems need pthread
 ifndef WINDOWS
  ifndef NOTHREADS
-   LIBS := -pthread ${LIBS}
+   LIBS := -pthread ${LIBS} -lpthread
    BASEFLAGS += -pthread
  endif
 endif
@@ -68,7 +74,7 @@ DMACH := $(shell ${CXX} -dumpmachine)
 ifneq (,$(filter %release %static, $(MAKECMDGOALS)))
   # -- release build
   RELEASE_BUILD=1
-  CXXFLAGS := $(if $(CXXFLAGS),$(CXXFLAGS),-g -O3)
+  CXXFLAGS := $(if $(CXXFLAGS),$(CXXFLAGS),-g -O2)
   CXXFLAGS += -DNDEBUG $(BASEFLAGS)
 else
   ifneq (,$(filter %memcheck %memdebug %tsan %tcheck %thrcheck, $(MAKECMDGOALS)))
@@ -99,7 +105,6 @@ else
      #just plain debug build
      DEBUG_BUILD=1
      CXXFLAGS := $(if $(CXXFLAGS),$(CXXFLAGS),-g -O0)
-     #CXXFLAGS := $(if $(CXXFLAGS),$(CXXFLAGS),-ggdb -g3 -O0 -fvar-tracking-assignments -fno-omit-frame-pointer)
      ifneq (, $(findstring darwin, $(DMACH)))
         CXXFLAGS += -gdwarf-3
      endif
@@ -123,8 +128,10 @@ ifdef DEBUG_BUILD
   DBG_WARN+='WARNING: built DEBUG version [much slower], use "make clean release" for a faster, optimized version of the program.'
 endif
 
-OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ${GDIR}/GBam.o \
- ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o ${GDIR}/gff.o 
+OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o
+
+#OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
+# ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
 
 ifneq (,$(filter %memtrace %memusage %memuse, $(MAKECMDGOALS)))
     CXXFLAGS += -DGMEMTRACE
@@ -138,21 +145,22 @@ endif
 %.o : %.cpp
 	${CXX} ${CXXFLAGS} -c $< -o $@
 
-OBJS += rlink.o tablemaker.o tmerge.o
+# OBJS += rlink.o tablemaker.o tmerge.o
 
 all release static debug: tiebrush${EXE}
 memcheck memdebug tsan tcheck thrcheck: tiebrush${EXE}
 memuse memusage memtrace: tiebrush${EXE}
 nothreads: tiebrush${EXE}
 
-${GDIR}/GBam.o : $(GDIR)/GBam.h
-tiebrush.o : $(GDIR)/GBitVec.h $(GDIR)/GHash.hh $(GDIR)/GBam.h
-rlink.o : rlink.h tablemaker.h $(GDIR)/GBam.h $(GDIR)/GBitVec.h
-tmerge.o : rlink.h tmerge.h
-tablemaker.o : tablemaker.h rlink.h
-${BAM}/libbam.a: 
-	cd ${BAM} && make lib
-tiebrush: ${BAM}/libbam.a $(OBJS) tiebrush.o
+#${GDIR}/GSam.o : $(GDIR)/GSam.h
+GSam.o : GSam.h
+tiebrush.o : $(GDIR)/GBitVec.h $(GDIR)/GHash.hh GSam.h
+#rlink.o : rlink.h tablemaker.h $(GDIR)/GBam.h $(GDIR)/GBitVec.h
+#tmerge.o : rlink.h tmerge.h
+#tablemaker.o : tablemaker.h rlink.h
+#${BAM}/libhts.a: 
+#	cd ${BAM} && make lib
+tiebrush: $(OBJS) tiebrush.o
 	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 	@echo
 	${DBG_WARN}
@@ -164,7 +172,7 @@ test demo tests: tiebrush${EXE}
 
 #	echo $(PATH)
 clean:
-	${RM} tiebrush${EXE} tiebrush.o*  $(OBJS)
+	${RM} tiebrush${EXE} tiebrush.o* $(OBJS)
 	${RM} core.*
 allclean cleanAll cleanall:
 	cd ${BAM} && make clean
