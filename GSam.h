@@ -206,9 +206,9 @@ class GSamReader {
          GError("Error: could not open SAM file %s!\n",filename);
       if (hts_file->is_cram) {
     	  if (cram_refseq!=NULL) {
-              cram_set_option(hts_file->fp.cram, CRAM_OPT_REFERENCE, cram_refseq);
+              hts_set_opt(hts_file, CRAM_OPT_REFERENCE, cram_refseq);
     	  }
-    	  else cram_set_option(hts_file->fp.cram, CRAM_OPT_REQUIRED_FIELDS, INT_MAX ^ SAM_SEQ);
+    	  else hts_set_opt(hts_file, CRAM_OPT_REQUIRED_FIELDS, INT_MAX ^ SAM_SEQ);
       }
       fname=Gstrdup(filename);
       r_hdr=sam_hdr_read(hts_file);
