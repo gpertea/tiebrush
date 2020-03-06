@@ -178,7 +178,7 @@ void GSamRecord::set_cigar(const char* str) {
    _parse_err(qlen!=b->core.l_qseq, "SEQ and QUAL are of different length!" );
    //uint8_t* p=bam_get_qual(b);
    for (int i=0;i < b->core.l_qseq; i++) t[i] = quals[i]-33;
-}
+ }
 
  void GSamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
@@ -268,7 +268,7 @@ void GSamRecord::set_cigar(const char* str) {
          else parse_error("unrecognized aux type");
   //this->add_aux(tag, atype, alen, adata);
   bam_aux_append(b, tag, atype, alen, adata);
-  }//add_aux()
+ }//add_aux()
 
 int interpret_CIGAR(char cop, int cl, int aln_start) {
 // returns the number of bases "aligned" (matches or mismatches) from the read
@@ -341,7 +341,7 @@ switch (cop) {
  return mbases;
 } // interpret_CIGAR(), just a reference of CIGAR operations interpretation
 
-void GSamRecord::setupCoordinates() {
+ void GSamRecord::setupCoordinates() {
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
@@ -386,7 +386,7 @@ void GSamRecord::setupCoordinates() {
 	exons.Add(exon);
 	mapped_len+=exon.len();
 	end=c->pos+l; //genomic end coordinate
-}
+ }
 
 
  uint8_t* GSamRecord::find_tag(const char tag[2]) {
@@ -397,7 +397,7 @@ void GSamRecord::setupCoordinates() {
    uint8_t* s=find_tag(tag);
    if (s) return ( bam_aux2A(s) );
    return 0;
-  }
+ }
 
  char GSamRecord::tag_char1(const char tag[2]) { //just the first char from Z type tags
 	uint8_t* s=bam_aux_get(this->b, tag);
@@ -413,19 +413,19 @@ void GSamRecord::setupCoordinates() {
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2i(s) );
    return 0;
-   }
+ }
 
  float GSamRecord::tag_float(const char tag[2]) { //get the float value of tag
     uint8_t *s=bam_aux_get(this->b, tag);;
     if (s) return ( bam_aux2f(s) );
     return 0;
-    }
+ }
 
  char* GSamRecord::tag_str(const char tag[2]) { //return string value for a tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2Z(s) );
    return NULL;
-   }
+ }
 
  char GSamRecord::spliceStrand() { // '+', '-' from the XS tag, or 0 if no XS tag
    char c=tag_char1("XS");
@@ -451,7 +451,7 @@ void GSamRecord::setupCoordinates() {
      }
    qseq[i] = 0;
    return qseq;
-   }
+ }
 
  char* GSamRecord::qualities() {//user must free this after use
    char *qual  = (char*)bam_get_qual(b);
@@ -463,7 +463,7 @@ void GSamRecord::setupCoordinates() {
      }
    qv[i]=0;
    return qv;
-   }
+ }
 
  char* GSamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
    kstring_t str = KS_INITIALIZE;
@@ -475,4 +475,4 @@ void GSamRecord::setupCoordinates() {
          }
       }
    return str.s;
-   }
+ }
