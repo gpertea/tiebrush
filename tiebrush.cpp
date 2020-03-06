@@ -2,9 +2,7 @@
 #include "GArgs.h"
 #include "GStr.h"
 
-const char* USAGE="Usage:\n  tiebrush [--fasta|-a|--fastq|-q|-G|--gff] \\\n"
-"	[--ref|-r <ref.fa>] [-M|--mapped-only|-A|--all] \\\n"
-"	[-o <outfile>] <in.bam>|<in.sam>\n";
+const char* USAGE="Usage:\n  tiebrush [-o <outfile>.bam] in1.bam in2.bam ...\n";
 
 enum OutType {
   outFASTQ,
