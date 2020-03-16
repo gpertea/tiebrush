@@ -1,23 +1,18 @@
-#ifndef STRINGTIE_MERGE_H_
-#define STRINGTIE_MERGE_H_
+#ifndef TIEBRUSH_TMERGE_H_
+#define TIEBRUSH_TMERGE_H_
 #include "GStr.h"
 #include "GList.hh"
-#include "rlink.h"
-extern GStr tmp_path;
-extern bool keepTempFiles;
-/*struct TInFile {
-	GStr fpath;
-	int ftype; //0=bam file, 1=GTF transfrags
-	TInFile(const char* fn=NULL,int ft=0):fpath(fn),ftype(ft) { }
-}*/
+//#include "rlink.h"
+#include "GSam.h"
+
 struct TInputRecord {
-	GBamRecord* brec;
+	GSamRecord* brec;
 	int fidx; //index in files and readers
 	bool operator<(TInputRecord& o) {
 		 //decreasing location sort
-		 GBamRecord& r1=*brec;
-		 GBamRecord& r2=*(o.brec);
-		 int refcmp=strcmp(r1.refName(),r2.refName());
+		 GSamRecord& r1=*brec;
+		 GSamRecord& r2=*(o.brec);
+		 int refcmp=strcmp(r1.refName(),r2.refName()); //FIXME no, should use the refID comparison instead
 		 if (refcmp==0) {
 		 //higher coords first
 			if (r1.start!=r2.start)
@@ -26,7 +21,7 @@ struct TInputRecord {
 				if (r1.end!=r2.end)
 				   return (r1.end>r2.end);
 				else if (fidx==o.fidx)
-						return (strcmp(r1.name(), r2.name())>0);
+						return (strcmp(r1.name(), r2.name())>0); //FIXME
 					else return fidx>o.fidx;
 			}
 		 }
@@ -35,13 +30,14 @@ struct TInputRecord {
 		 }
 	}
 	bool operator==(TInputRecord& o) {
-		 GBamRecord& r1=*brec;
-		 GBamRecord& r2=*(o.brec);
+		 GSamRecord& r1=*brec;
+		 GSamRecord& r2=*(o.brec);
+		 //TODO: should use refID comparison instead of refName!
 		 return ( strcmp(r1.refName(),r2.refName())==0 && r1.start==r2.start && r1.end==r2.end
 				 && fidx==o.fidx && strcmp(r1.name(),r2.name())==0);
 	}
 
-	TInputRecord(GBamRecord* b=NULL, int i=0):brec(b),fidx(i) {}
+	TInputRecord(GSamRecord* b=NULL, int i=0):brec(b),fidx(i) {}
 	~TInputRecord() {
 		delete brec;
 	}
@@ -50,20 +46,21 @@ struct TInputRecord {
 struct TInputFiles {
  protected:
 	TInputRecord* crec;
-	GStr convert2BAM(GStr& gtf, int idx);
+	// TODO: populated a refseq list/ID from the 1st SAM header and
+	// use that to check if each input SAM file has the refseqs sorted
+	// in the same order!
  public:
-	GPVec<GBamReader> readers;
-	GVec<GStr> files; //same order
-	GVec<GStr> tmpfiles; //all the temp files created by this
+	GVec<GStr> files; //same order as readers
+	GPVec<GSamReader> readers;
 	GList<TInputRecord> recs; //next record for each
-	TInputFiles():crec(NULL), readers(true), files(), tmpfiles(),
+	TInputFiles():crec(NULL), files(), readers(true),
 			recs(true, true, true) { }
 	void Add(const char* fn);
 	int count() { return files.Count(); }
 	int start(); //open all files, load 1 record from each
-	GBamRecord* next();
+	GSamRecord* next();
 	void stop(); //
 };
 
 
-#endif /* STRINGTIE_MERGE_H_ */
+#endif /* TIEBRUSH_TMERGE_H_ */
