@@ -128,7 +128,7 @@ ifdef DEBUG_BUILD
   DBG_WARN+='WARNING: built DEBUG version [much slower], use "make clean release" for a faster, optimized version of the program.'
 endif
 
-OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o
+OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o ./tmerge.o
 
 #OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
 # ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
@@ -152,12 +152,9 @@ memcheck memdebug tsan tcheck thrcheck: tiebrush${EXE}
 memuse memusage memtrace: tiebrush${EXE}
 nothreads: tiebrush${EXE}
 
-#${GDIR}/GSam.o : $(GDIR)/GSam.h
 GSam.o : GSam.h
-tiebrush.o : $(GDIR)/GBitVec.h $(GDIR)/GHash.hh GSam.h
-#rlink.o : rlink.h tablemaker.h $(GDIR)/GBam.h $(GDIR)/GBitVec.h
-#tmerge.o : rlink.h tmerge.h
-#tablemaker.o : tablemaker.h rlink.h
+tiebrush.o : GSam.h tmerge.h
+tmerge.o : tmerge.h
 #${BAM}/libhts.a: 
 #	cd ${BAM} && make lib
 tiebrush: $(OBJS) tiebrush.o

@@ -11,110 +11,77 @@ void TInputFiles::Add(const char* fn) {
 	}
 
 void TInputFiles::addSam(GSamReader& r) {
+	//requirement: all files must have the same number of SQ entries in the same order!
 	kstring_t hd_line = { 0, 0, NULL };
-	int res = sam_hdr_find_hd(r.hdr, &hd_line);
+	int res = sam_hdr_find_hd(r.header(), &hd_line);
 	if (res < 0) GError("Error: failed to get @HD line from header");
 	//check for SO:coordinate
 	kstring_t str = KS_INITIALIZE;
     // Accept unknown, unsorted, or queryname sort order, but error on coordinate sorted.
-    if (!sam_hdr_find_tag_hd(r.hdr, "SO", &str) || !str.s || !strcmp(str.s, "coordinate"))
+    if (!sam_hdr_find_tag_hd(r.header(), "SO", &str) || !str.s || !strcmp(str.s, "coordinate"))
 	        GError("Error: %s file not coordinate-sorted!\n");
-    ks_free(&str);
-	if (!mHdr.haveHD) {
-	   if (sam_hdr_add_lines(mHdr.hdr, hd_line.s, hd_line.l) < 0) {
-	        GError("Error: failed to add @HD line to new header");
-	   }
-	   //also add other useful header lines from the first file
-	   if (sam_hdr_find_line_id(r.hdr, "PG", NULL, NULL, &str)) {
-		   sam_hdr_add_lines(mHdr.hdr, str.s, str.l);
-	   }
-	   ks_free(&str);
-	   sam_hdr_add_pg(mHdr.hdr, "tiebrush",
-	                                    "VN", pg_ver, "CL", pg_args);
-	   mHdr.haveHD=true;
+    ks_free(&hd_line);
+	if (mHdr==NULL) { //first file
+		mHdr=sam_hdr_dup(r.header());
+		sam_hdr_add_pg(mHdr, "TieBrush",
+				"VN", pg_ver, "CL", pg_args.chars());
 	}
-    //add every single SQ to mHdr.hdr and mHdr.refs
-	kstring_t sq_line = { 0, 0, NULL }, sq_sn = { 0, 0, NULL };
-
-	// Fill in the tid part of the translation table, adding new targets
-	// to the merged header
-	for (int i = 0; i < sam_hdr_nref(r.hdr); ++i) {
-		sq_sn.l = 0;
-		res = sam_hdr_find_tag_pos(r.hdr, "SQ", i, "SN", &sq_sn);
-		if (res < 0)
-			GError("Error: failed to get @SQ SN #%d from header\n", i + 1);
-		int trans_tid = sam_hdr_name2tid(mHdr.hdr, sq_sn.s);
-		if (trans_tid < -1)
-			GError("Error: failed to lookup ref\n");
-
-		if (trans_tid < 0) {
-			// Append new entry to out_hdr
-			sq_line.l = 0;
-			res = sam_hdr_find_line_id(r.hdr, "SQ", "SN", sq_sn.s, &sq_line);
+	else { //check if this file has the same SQ entries in the same order
+		int r_numrefs=sam_hdr_nref(r.header());
+		if (r_numrefs!=sam_hdr_nref(mHdr))
+			GError("Error: file %s has different number of reference sequences (%d)!\n", r.fileName(), r_numrefs);
+		for (int i = 0; i < r_numrefs; ++i) {
+			str.l = 0;
+			res = sam_hdr_find_tag_pos(r.header(), "SQ", i, "SN", &str);
 			if (res < 0)
-				GError("Error: failed to get @SQ SN:%s from header\n", sq_sn.s);
-
-			trans_tid = sam_hdr_nref(mHdr.hdr);
-
-			res = sam_hdr_add_lines(mHdr.hdr, sq_line.s, sq_line.l);
-			if (res < 0)
-				GError("Error: failed to add @SQ SN:%s to new header\n", sq_sn.s);
+				GError("Error: failed to get @SQ SN #%d from header\n", i + 1);
+			int m_tid = sam_hdr_name2tid(mHdr, str.s);
+			if (m_tid < -1)
+				GError("Error: unexpected ref lookup failure (%s)!\n", str.s);
+			if (m_tid < 0)
+				GError("Error: ref %s from file %s not seen before!\n", str.s, r.fileName());
+			int r_tid = sam_hdr_name2tid(r.header(), str.s);
+			if (r_tid != m_tid)
+					GError("Error: ref %s from file %s does not have the expected id#!", str.s, r.fileName());
 		}
-		//TODO add to mHdr.refs
-		/* --FIXME
-		tbl->tid_trans[i] = trans_tid;
-
-		if (tbl->tid_trans[i] > min_tid) {
-			min_tid = tbl->tid_trans[i];
-		} else {
-			tbl->lost_coord_sort = true;
-		}
-		*/
 	}
 
-	ks_free(&sq_line);
-	ks_free(&sq_sn);
+	ks_free(&str);
 
 }
 
 int TInputFiles::start() {
 	if (this->files.Count()==1) {
-		//special case, if it's only one file it must be a list (usually)
+		//special case, if it's only one file it might be a list of file paths
 		GStr fname(this->files.First());
-		FILE* flst=fopen(this->files.First().chars(),"r");
-		if (flst==NULL) GError("Error: could not open input file %s!\n",
-				fname.chars());
-		GVec<GStr> infiles;
-		char* line=NULL;
-		int lcap=5000;
-		GMALLOC(line, lcap);
-		bool firstline=true;
-		//bool isalist=true;
-		while (fgetline(line,lcap,flst)) {
-			GStr s(line);
-			s.trim();
-			if (s.length()<2 || s[0]=='#') continue; //skip comments/header in the list file, if any
-			if (firstline) {
-				if (!fileExists(s.chars())) {
-					//it must be a GFF
-					//this shouldn't normally happen in mergeMode, with one input file
-					if (s.count('\t')<8)
-						GError("Error: cannot find file '%s' and %s does not look like GFF!\n", s.chars(), fname.chars());
-					break;
-				}
-				firstline=false;
-				files.Clear();
-			}
-			if (!fileExists(s.chars()))
-				GError("Error opening transcript file %s !\n",s.chars());
-			fname=s;
-			files.Add(fname);
-		} //for each line in the list file
-		GFREE(line);
-		fclose(flst);
+		//try to open it as a SAM/BAM/CRAM
+		htsFile* hf=hts_open(fname.chars(), "r");
+		if (hf==NULL || hf->format.category!=sequence_data) {
+			//must be a list
+			if (hf) hts_close(hf);
+			FILE* flst=fopen(fname.chars(),"r");
+			if (flst==NULL) GError("Error: could not open input file %s!\n",
+					fname.chars());
+			char* line=NULL;
+			int lcap=5000;
+			GMALLOC(line, lcap);
+			files.Clear();
+			while (fgetline(line,lcap,flst)) {
+				GStr s(line);
+				s.trim();
+				if (s.length()<2 || s[0]=='#') continue; //skip comments/header in the list file, if any
+				if (!fileExists(s.chars()))
+					GError("Error: cannot find alignment file %s !\n",s.chars());
+				files.Add(s);
+			} //for each line in the list file
+			GFREE(line);
+			fclose(flst);
+		}
+		else { // single alignment file
+			hts_close(hf);
+		}
 	}
 
-	//multi-BAM input
 	for (int i=0;i<files.Count();++i) {
 		GSamReader* samreader=new GSamReader(files[i].chars());
 		addSam(*samreader); //merge SAM headers etc.

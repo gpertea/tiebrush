@@ -205,7 +205,7 @@ class GSamReader {
    void bopen(const char* filename, const char* cram_refseq=NULL) {
       hts_file=hts_open(filename, "r");
       if (hts_file==NULL)
-         GError("Error: could not open SAM file %s!\n",filename);
+         GError("Error: could not open alignment file %s \n",filename);
       if (hts_file->is_cram) {
     	  if (cram_refseq!=NULL) {
               hts_set_opt(hts_file, CRAM_OPT_REFERENCE, cram_refseq);
@@ -222,6 +222,9 @@ class GSamReader {
 
    sam_hdr_t* header() {
       return hts_file ? hdr : NULL;
+   }
+   const char* fileName() {
+      return fname;
    }
 
    void bclose() {
@@ -326,7 +329,7 @@ class GSamWriter {
    sam_hdr_t* hdr;
  public:
    void create(const char* fname, sam_hdr_t* bh, GSamFileType ftype=GSamFile_BAM) {
-     hdr=bh;
+     hdr=sam_hdr_dup(bh);
      create(fname, ftype);
    }
 
@@ -361,7 +364,7 @@ class GSamWriter {
       if (sam_hdr_write(bam_file, hdr)<0)
     	  GError("Error writing header data to file %s\n", fname);
    }
-
+   sam_hdr_t* header() { return hdr; }
    GSamWriter(const char* fname, const char* hdr_file, GSamFileType ftype=GSamFile_BAM):
 	                                             bam_file(NULL),hdr(NULL) {
 	  //create an output file fname with the SAM header copied from hdr_file
