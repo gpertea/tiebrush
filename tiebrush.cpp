@@ -30,6 +30,20 @@ int main(int argc, char *argv[])  {
 			GSamFile_SAM : GSamFile_BAM;
 	outfile=new GSamWriter(outfname, bamreader.header(), oftype);
 
+	 int currentstart=0, currentend=0;
+
+	 GSamRecord* brec=NULL;
+	 bool more_alns=true;
+	 int prev_pos=0;
+	 int prev_tid=-1;
+	 while (more_alns) {
+		 int pos=0;
+		 if ((brec=bamreader.next())!=NULL) {
+			 if (brec->isUnmapped()) continue;
+		 }
+		 int tid=brec->refId();
+
+	 }
 
 	delete outfile;
 }
