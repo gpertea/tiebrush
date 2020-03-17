@@ -4,6 +4,7 @@
 #include "GList.hh"
 //#include "rlink.h"
 #include "GSam.h"
+#include "htslib/khash.h";
 
 struct TInputRecord {
 	GSamRecord* brec;
@@ -43,18 +44,49 @@ struct TInputRecord {
 	}
 };
 
+struct TMrgSQData {
+	char* name;
+	int sqlen;
+	int tid; //newly assigned tid in the merged output header
+    TMrgSQData(const char* n=NULL, int sql=0, int id=0):
+    	name(NULL),sqlen(sql),tid(id) {
+    	if (n) name=Gstrdup(n);
+    }
+    ~TMrgSQData() { GFREE(name); }
+};
+
+struct TMrgHeader {
+    sam_hdr_t    *hdr; //merged header for output
+    GVec<TMrgSQData> refs; //collected ref seq data
+    bool haveHD;
+    //khash_t(c2i) *sq_tids;
+    TMrgHeader():hdr(NULL), refs(), haveHD(false) {
+    	hdr=sam_hdr_init();
+    	if (!hdr) GError("Error: could not create SAM header!\n");
+    }
+    ~TMrgHeader() {
+    	if (!hdr) sam_hdr_destroy(hdr);
+    }
+};
+
 struct TInputFiles {
  protected:
 	TInputRecord* crec;
-	// TODO: populated a refseq list/ID from the 1st SAM header and
-	// use that to check if each input SAM file has the refseqs sorted
-	// in the same order!
+	// use that to check if each input SAM file has the refseqs sorted by coordinate
+	TMrgHeader mHdr; //merged output header data
+	char* pg_ver;
+	char* pg_args;
  public:
 	GVec<GStr> files; //same order as readers
 	GPVec<GSamReader> readers;
+	void addSam(GSamReader& r); //update mHdr data
 	GList<TInputRecord> recs; //next record for each
-	TInputFiles():crec(NULL), files(), readers(true),
-			recs(true, true, true) { }
+	TInputFiles(const char* ver, const char* args):crec(NULL), mHdr(), pg_ver(NULL), pg_args(NULL),
+			files(), readers(true), recs(true, true, true) {
+		if (ver) pg_ver=Gstrdup(ver);
+		if (args) pg_args=Gstrdup(args);
+	}
+	~TInputFiles() { GFREE(pg_ver); GFREE(pg_args); }
 	void Add(const char* fn);
 	int count() { return files.Count(); }
 	int start(); //open all files, load 1 record from each
