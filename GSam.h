@@ -37,8 +37,6 @@ class GSamRecord: public GSeg {
       };
    };
    sam_hdr_t* b_hdr;
-   char tag[2];
-   uint8_t abuf[512];
  public:
    GVec<GSeg> exons; //coordinates will be 1-based
    int clipL; //soft clipping data, as seen in the CIGAR string
@@ -64,10 +62,10 @@ class GSamRecord: public GSeg {
       setupCoordinates();//set 1-based coordinates (start, end and exons array)
    }
 
-   GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(0), exons(r.exons),
-		   clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) { //copy constructor
+   //deep copy constructor:
+   GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(r.iflags), b_hdr(r.b_hdr),
+		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) {
 	      //makes a new copy of the bam1_t record etc.
-	      clear();
 	      b=bam_dup1(r.b);
 	      novel=true; //will also free b when destroyed
    }

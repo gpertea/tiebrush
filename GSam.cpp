@@ -182,7 +182,10 @@ void GSamRecord::set_cigar(const char* str) {
 
  void GSamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
-	 //--check the "// aux" section in sam_parse1() htslib/sam.c
+     //--check the "// aux" section in sam_parse1() htslib/sam.c
+     char tag[2];
+     uint8_t abuf[512];
+
      int strl=strlen(str);
      //int doff = b->core.l_qname + b->core.n_cigar*4 + (b->core.l_qseq+1)/2 + b->core.l_qseq + b->l_aux;
      //int doff0=doff;

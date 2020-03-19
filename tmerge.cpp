@@ -92,7 +92,7 @@ int TInputFiles::start() {
 	return readers.Count();
 }
 
-GSamRecord* TInputFiles::next() {
+TInputRecord* TInputFiles::next() {
 	//must free old current record first
 	delete crec;
 	crec=NULL;
@@ -101,7 +101,8 @@ GSamRecord* TInputFiles::next() {
     	GSamRecord* rnext=readers[crec->fidx]->next();
     	if (rnext)
     		recs.Add(new TInputRecord(rnext,crec->fidx));
-    	return crec->brec;
+    	//return crec->brec;
+    	return crec;
     }
     else return NULL;
 }

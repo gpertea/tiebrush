@@ -1,6 +1,7 @@
 #ifndef TIEBRUSH_TMERGE_H_
 #define TIEBRUSH_TMERGE_H_
 #include "GStr.h"
+#include "GVec.hh"
 #include "GList.hh"
 //#include "rlink.h"
 #include "GSam.h"
@@ -61,7 +62,9 @@ struct TInputFiles {
 	GList<TInputRecord> recs; //next record for each
 	TInputFiles():crec(NULL), mHdr(NULL), pg_ver(NULL), pg_args(),
 			files(), readers(true), recs(true, true, true) { }
+
 	sam_hdr_t* header() { return mHdr; }
+
 	void setup(const char* ver, int argc, char** argv) {
 		if (ver) pg_ver=Gstrdup(ver);
 		if (argc>0 && argv!=NULL) {
@@ -71,11 +74,12 @@ struct TInputFiles {
 			 }
 		}
 	}
+
 	~TInputFiles() { GFREE(pg_ver); sam_hdr_destroy(mHdr); }
 	void Add(const char* fn);
 	int count() { return files.Count(); }
 	int start(); //open all files, load 1 record from each
-	GSamRecord* next();
+	TInputRecord* next();
 	void stop(); //
 };
 
