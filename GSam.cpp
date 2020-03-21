@@ -474,7 +474,7 @@ switch (cop) {
     else {
       for (uint i = 0; i < b->core.n_cigar; ++i) {
          kputw(bam_get_cigar(b)[i]>>BAM_CIGAR_SHIFT, &str);
-         kputc("MIDNSHP=X"[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &str);
+         kputc(BAM_CIGAR_STR[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &str);
          }
       }
    return str.s;

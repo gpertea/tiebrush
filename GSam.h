@@ -185,7 +185,6 @@ class GSamRecord: public GSeg {
  char tag_char(const char tag[2]); //return char value of tag (for type 'A')
  char tag_char1(const char tag[2]);
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag
-
  char* sequence(); //user should free after use
  char* qualities();//user should free after use
  char* cigar(); //returns text version of the CIGAR string; user must free

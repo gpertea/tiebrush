@@ -22,19 +22,59 @@ enum TMrgStrategy {
 TMrgStrategy mrgStrategy=tMrgStratFull;
 TInputFiles inRecords;
 
+GSamWriter* outfile=NULL;
+GStr outfname;
+
 int cmpFull(GSamRecord& a, GSamRecord& b) {
-	return 0;
+	//-- CIGAR && MD strings
+	if (a.b->core.n_cigar!=b.b->core.n_cigar) return ((int)a.b->core.n_cigar - (int)b.b->core.n_cigar);
+	int cigar_cmp=0;
+	if (a.b->core.n_cigar>0)
+		cigar_cmp=memcmp(bam_get_cigar(a.b) , bam_get_cigar(b.b), a.b->core.n_cigar*sizeof(uint32_t) );
+	if (cigar_cmp!=0) return cigar_cmp;
+	// compare MD tag
+	char* aMD=a.tag_str("MD");
+	char* bMD=b.tag_str("MD");
+	if (aMD==NULL || bMD==NULL) {
+		if (aMD==bMD) return 0;
+		if (aMD!=NULL) return 1;
+		return -1;
+	}
+    return strcmp(aMD, bMD);
 }
 
 int cmpCigar(GSamRecord& a, GSamRecord& b) {
-	return 0;
+	if (a.b->core.n_cigar!=b.b->core.n_cigar) return ((int)a.b->core.n_cigar - (int)b.b->core.n_cigar);
+	if (a.b->core.n_cigar==0) return 0;
+	return memcmp(bam_get_cigar(a.b) , bam_get_cigar(b.b), a.b->core.n_cigar*sizeof(uint32_t) );
 }
 
 int cmpCigarClip(GSamRecord& a, GSamRecord& b) {
-	return 0;
+	uint32_t a_clen=a.b->core.n_cigar;
+	uint32_t b_clen=b.b->core.n_cigar;
+	uint32_t* a_cstart=bam_get_cigar(a.b);
+	uint32_t* b_cstart=bam_get_cigar(b.b);
+	while (a_clen>0 &&
+			((*a_cstart) && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { a_cstart++; a_clen--; }
+	while (a_clen>0 &&
+			(a_cstart[a_clen-1] && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) a_clen--;
+	while (b_clen>0 &&
+			((*b_cstart) && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { b_cstart++; b_clen--; }
+	while (b_clen>0 &&
+			(b_cstart[b_clen-1] && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) b_clen--;
+	if (a_clen!=b_clen) return (int)a_clen-(int)b_clen;
+	if (a_clen==0) return 0;
+	return memcmp(a_cstart, b_cstart, a_clen*sizeof(uint32_t));
 }
 
 int cmpExons(GSamRecord& a, GSamRecord& b) {
+	if (a.exons.Count()!=b.exons.Count()) return (a.exons.Count()-b.exons.Count());
+	for (int i=0;i<a.exons.Count();i++) {
+		if (a.exons[i].start!=b.exons[i].start)
+			return ((int)a.exons[i].start-(int)b.exons[i].start);
+		if (a.exons[i].end!=b.exons[i].end)
+			return ((int)a.exons[i].end-(int)b.exons[i].end);
+	}
 	return 0;
 }
 
@@ -42,32 +82,33 @@ int cmpExons(GSamRecord& a, GSamRecord& b) {
 //keep track of all SAM alignments starting at the same coordinate
 // that were merged into a single alignment
 class SPData {
-    bool linked; //not an independed copy, do not free r on destroy
+    bool detached; //if detached, r is not deleted on destroy
 	GBitVec samples; //which samples were the collapsed ones coming from
   public:
 	GSamRecord* r;
-	int dup; //duplicity count - how many alignments were "the same" with r
-    SPData(GSamRecord* rec=NULL, bool standalone=false):linked(~standalone),
-    		samples(inRecords.readers.Count()), r(NULL), dup(0) {
-    	if (linked) r=rec;
-    	else {
+	int dupCount; //duplicity count - how many alignments were "the same" with r
+    SPData(GSamRecord* rec=NULL, bool dupRec=false):detached(false),
+    		samples(inRecords.readers.Count()), r(NULL), dupCount(0) {
+    	if (dupRec) {
     		if (rec!=NULL)
-    		  r=new GSamRecord(*rec);
-    		else { //should never happen
-    			r=new GSamRecord();
-    			GMessage("Warning: standalone blank SPData object created!\n");
-    		}
+    		  r=new GSamRecord(*rec); //copy constructor
+    		else  //should never happen
+    		  GError("Error: record duplication of NULL record\n");
     	}
+    	else r=rec;
     }
     ~SPData() {
-    	if (!linked && r) delete r;
+    	if (!detached && r) delete r;
     }
-    //TODO: add < and == operators accordingly (for merging)
+    void detach(bool dontFree=true) { detached=dontFree; }
+
     bool operator<(const SPData& b) {
     	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
     	if (r->refId()!=b.r->refId()) return (r->refId()<b.r->refId());
+    	//NOTE: already assuming that start&end must match, no matter the merge strategy
     	if (r->start!=b.r->start) return (r->start<b.r->start);
     	if (r->end!=b.r->end) return (r->end<b.r->end);
+
     	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b->r))<0);
     	else
     		switch (mrgStrategy) {
@@ -97,8 +138,15 @@ class SPData {
 
 void processOptions(int argc, char* argv[]);
 
-GSamWriter* outfile=NULL;
-GStr outfname;
+void addPData(TInputRecord& irec, GList<SPData>& spdata) {
+  //add and collapse
+}
+
+void flushPData(GList<SPData>& spdata){ //write spdata to outfile
+  //TODO: write SAM records in spdata to outfile
+  spdata.Clear();
+}
+
 
 bool debugMode=false;
 bool verbose=false;
@@ -114,20 +162,28 @@ int main(int argc, char *argv[])  {
 
 	 TInputRecord* irec=NULL;
 	 GSamRecord* brec=NULL;
-	 GPVec<SPData> spdata; //list of Same Position data, with all possibly merged records
-	 bool more_alns=true;
-	 int prev_pos=0;
+	 GList<SPData> spdata(true, true, true); //list of Same Position data, with all possibly merged records
+	 bool newChr=false;  //flush spdata
+	 bool newPos=false; //flush spdata
+	 int prev_pos=-1;
 	 int prev_tid=-1;
 	 while ((irec=inRecords.next())!=NULL) {
 		 brec=irec->brec;
 		 if (brec->isUnmapped()) continue;
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
-
-
-
+		 if (tid!=prev_tid) {
+			 prev_tid=tid;
+			 newChr=true;
+			 prev_pos=-1;
+		 }
+		 if (pos!=prev_pos) {
+			 flushPData(spdata);
+			 prev_pos=pos;
+		 }
+		 addPData(*irec, spdata);
 	 }
-
+     flushPData(spdata);
 	delete outfile;
 }
 // <------------------ main() end -----
