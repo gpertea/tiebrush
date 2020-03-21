@@ -22,6 +22,23 @@ enum TMrgStrategy {
 TMrgStrategy mrgStrategy=tMrgStratFull;
 TInputFiles inRecords;
 
+int cmpFull(GSamRecord& a, GSamRecord& b) {
+	return 0;
+}
+
+int cmpCigar(GSamRecord& a, GSamRecord& b) {
+	return 0;
+}
+
+int cmpCigarClip(GSamRecord& a, GSamRecord& b) {
+	return 0;
+}
+
+int cmpExons(GSamRecord& a, GSamRecord& b) {
+	return 0;
+}
+
+
 //keep track of all SAM alignments starting at the same coordinate
 // that were merged into a single alignment
 class SPData {
@@ -35,14 +52,47 @@ class SPData {
     	if (linked) r=rec;
     	else {
     		if (rec!=NULL)
-    		  r=new GSamRecord(*rec); //FIXME: full copy constructor needed!
+    		  r=new GSamRecord(*rec);
     		else { //should never happen
     			r=new GSamRecord();
     			GMessage("Warning: standalone blank SPData object created!\n");
     		}
     	}
     }
+    ~SPData() {
+    	if (!linked && r) delete r;
+    }
     //TODO: add < and == operators accordingly (for merging)
+    bool operator<(const SPData& b) {
+    	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
+    	if (r->refId()!=b.r->refId()) return (r->refId()<b.r->refId());
+    	if (r->start!=b.r->start) return (r->start<b.r->start);
+    	if (r->end!=b.r->end) return (r->end<b.r->end);
+    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b->r))<0);
+    	else
+    		switch (mrgStrategy) {
+    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b->r))<0); break;
+    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b->r))<0); break;
+    		  case tMrgStratExon: return (cmpExons(*r, *(b->r))<0); break;
+    		  default: GError("Error: unknown merge strategy!\n");
+    		}
+    	return false;
+    }
+
+    bool operator==(const SPData& b) {
+    	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
+    	if (r->refId()!=b.r->refId() || r->start!=b.r->start ||
+    			r->end!=b.r->end) return false;
+    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b->r))==0);
+    	else
+    		switch (mrgStrategy) {
+    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b->r))==0); break;
+    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b->r))==0); break;
+    		  case tMrgStratExon: return (cmpExons(*r, *(b->r))==0); break;
+    		  default: GError("Error: unknown merge strategy!\n");
+    		}
+    	return false;
+    }
 };
 
 void processOptions(int argc, char* argv[]);
@@ -99,7 +149,7 @@ void processOptions(int argc, char* argv[]) {
 	bool stratE=(args.getOpt("exon")!=NULL || args.getOpt('E')!=NULL);
 	if (stratC | stratP | stratE) {
 		if (!(stratC ^ stratP ^ stratE))
-			GError("Error: only one merge strategy is accepted.\n");
+			GError("Error: only one merging strategy can be requested.\n");
 		if (stratC) mrgStrategy=tMrgStratCIGAR;
 		else if (stratP) mrgStrategy=tMrgStratClip;
 		else mrgStrategy=tMrgStratExon;
