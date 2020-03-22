@@ -144,6 +144,10 @@ class GSamRecord: public GSeg {
       //IMPORTANT:  strings type (Z,H) should include the terminal \0
       return bam_aux_append(b, tag, atype, len, data);
     }
+
+    int add_int_tag(const char tag[2], int64_t val) { //add or update int tag
+    	return bam_aux_update_int(b, tag, val);
+    }
  //--query methods:
  uint32_t flags() { return b->core.flag; } //return SAM flags
  bool isUnmapped() { return ((b->core.flag & BAM_FUNMAP) != 0); }
@@ -180,8 +184,8 @@ class GSamRecord: public GSeg {
  //returns length of tag data, or 0 if tag not found
 
  char* tag_str(const char tag[2]); //return tag value for tag type 'Z'
- int tag_int(const char tag[2]); //return numeric value of tag (for numeric types)
- float tag_float(const char tag[2]); //return float value of tag (for float types)
+ int64_t tag_int(const char tag[2]); //return numeric value of tag (for numeric types)
+ double tag_float(const char tag[2]); //return float value of tag (for float types)
  char tag_char(const char tag[2]); //return char value of tag (for type 'A')
  char tag_char1(const char tag[2]);
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag

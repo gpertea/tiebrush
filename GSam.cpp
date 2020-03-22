@@ -412,13 +412,13 @@ switch (cop) {
  	else return 0;
  }
 
- int GSamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
+ int64_t GSamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2i(s) );
    return 0;
  }
 
- float GSamRecord::tag_float(const char tag[2]) { //get the float value of tag
+ double GSamRecord::tag_float(const char tag[2]) { //get the float value of tag
     uint8_t *s=bam_aux_get(this->b, tag);;
     if (s) return ( bam_aux2f(s) );
     return 0;

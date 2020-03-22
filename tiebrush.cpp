@@ -24,13 +24,18 @@ TInputFiles inRecords;
 
 GSamWriter* outfile=NULL;
 GStr outfname;
+uint64_t inCounter=0;
+uint64_t outCounter=0;
+
+bool debugMode=false;
+bool verbose=false;
 
 int cmpFull(GSamRecord& a, GSamRecord& b) {
 	//-- CIGAR && MD strings
-	if (a.b->core.n_cigar!=b.b->core.n_cigar) return ((int)a.b->core.n_cigar - (int)b.b->core.n_cigar);
+	if (a.get_b()->core.n_cigar!=b.get_b()->core.n_cigar) return ((int)a.get_b()->core.n_cigar - (int)b.get_b()->core.n_cigar);
 	int cigar_cmp=0;
-	if (a.b->core.n_cigar>0)
-		cigar_cmp=memcmp(bam_get_cigar(a.b) , bam_get_cigar(b.b), a.b->core.n_cigar*sizeof(uint32_t) );
+	if (a.get_b()->core.n_cigar>0)
+		cigar_cmp=memcmp(bam_get_cigar(a.get_b()) , bam_get_cigar(b.get_b()), a.get_b()->core.n_cigar*sizeof(uint32_t) );
 	if (cigar_cmp!=0) return cigar_cmp;
 	// compare MD tag
 	char* aMD=a.tag_str("MD");
@@ -44,24 +49,24 @@ int cmpFull(GSamRecord& a, GSamRecord& b) {
 }
 
 int cmpCigar(GSamRecord& a, GSamRecord& b) {
-	if (a.b->core.n_cigar!=b.b->core.n_cigar) return ((int)a.b->core.n_cigar - (int)b.b->core.n_cigar);
-	if (a.b->core.n_cigar==0) return 0;
-	return memcmp(bam_get_cigar(a.b) , bam_get_cigar(b.b), a.b->core.n_cigar*sizeof(uint32_t) );
+	if (a.get_b()->core.n_cigar!=b.get_b()->core.n_cigar) return ((int)a.get_b()->core.n_cigar - (int)b.get_b()->core.n_cigar);
+	if (a.get_b()->core.n_cigar==0) return 0;
+	return memcmp(bam_get_cigar(a.get_b()) , bam_get_cigar(b.get_b()), a.get_b()->core.n_cigar*sizeof(uint32_t) );
 }
 
 int cmpCigarClip(GSamRecord& a, GSamRecord& b) {
-	uint32_t a_clen=a.b->core.n_cigar;
-	uint32_t b_clen=b.b->core.n_cigar;
-	uint32_t* a_cstart=bam_get_cigar(a.b);
-	uint32_t* b_cstart=bam_get_cigar(b.b);
+	uint32_t a_clen=a.get_b()->core.n_cigar;
+	uint32_t b_clen=b.get_b()->core.n_cigar;
+	uint32_t* a_cstart=bam_get_cigar(a.get_b());
+	uint32_t* b_cstart=bam_get_cigar(b.get_b());
 	while (a_clen>0 &&
-			((*a_cstart) && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { a_cstart++; a_clen--; }
+			((*a_cstart) & BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { a_cstart++; a_clen--; }
 	while (a_clen>0 &&
-			(a_cstart[a_clen-1] && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) a_clen--;
+			(a_cstart[a_clen-1] & BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) a_clen--;
 	while (b_clen>0 &&
-			((*b_cstart) && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { b_cstart++; b_clen--; }
+			((*b_cstart) & BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) { b_cstart++; b_clen--; }
 	while (b_clen>0 &&
-			(b_cstart[b_clen-1] && BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) b_clen--;
+			(b_cstart[b_clen-1] & BAM_CIGAR_MASK)==BAM_CSOFT_CLIP) b_clen--;
 	if (a_clen!=b_clen) return (int)a_clen-(int)b_clen;
 	if (a_clen==0) return 0;
 	return memcmp(a_cstart, b_cstart, a_clen*sizeof(uint32_t));
@@ -82,25 +87,50 @@ int cmpExons(GSamRecord& a, GSamRecord& b) {
 //keep track of all SAM alignments starting at the same coordinate
 // that were merged into a single alignment
 class SPData {
-    bool detached; //if detached, r is not deleted on destroy
-	GBitVec samples; //which samples were the collapsed ones coming from
+    bool settled; //real SP data, owns its r data and deallocates it on destroy
   public:
+	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
+	int64_t accYS; //if any merged records had YS tag, their values are accumulated here
+	GBitVec* samples; //which samples were the collapsed ones coming from
+	                 //number of bits set will be stored as YS:i:(samples.count()+accYS)
+	int dupCount; //duplicity count - how many single-alignments were merged into r
+	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
-	int dupCount; //duplicity count - how many alignments were "the same" with r
-    SPData(GSamRecord* rec=NULL, bool dupRec=false):detached(false),
-    		samples(inRecords.readers.Count()), r(NULL), dupCount(0) {
-    	if (dupRec) {
-    		if (rec!=NULL)
-    		  r=new GSamRecord(*rec); //copy constructor
-    		else  //should never happen
-    		  GError("Error: record duplication of NULL record\n");
-    	}
-    	else r=rec;
-    }
+    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYS(0), samples(NULL),
+    		dupCount(0), r(rec) {    }
+
     ~SPData() {
-    	if (!detached && r) delete r;
+    	if (settled && r!=NULL) delete r;
+    	if (samples!=NULL) delete samples;
     }
-    void detach(bool dontFree=true) { detached=dontFree; }
+
+    void detach(bool dontFree=true) { settled=!dontFree; }
+    //detach(true) must never be called before settle()
+
+    void settle(int sampleIdx=-1) { //becomes a standalone SPData record
+    	// duplicates the current record
+    	if (!settled) { //r is not owned
+    		settled=true;
+    		GSamRecord* rdup=new GSamRecord(*r);
+    		r=rdup;
+    	}
+    	if (samples==NULL) samples=new GBitVec(inRecords.readers.Count());
+    	accYC=r->tag_int("YC");
+    	if (accYC==0) ++dupCount;
+    	accYS=r->tag_int("YS");
+    	if (accYS==0 && sampleIdx>=0) samples->set(sampleIdx);
+    }
+
+    void dupAdd(GSamRecord* rec, int sampleIdx=-1) { //merge an external SAM record into this one
+    	if (!settled) GError("Error: cannot merge a duplicate into a non-settled SP record!\n");
+    	//WARNING: rec MUST be a "duplicate" of current record r
+    	int64_t rYC=rec->tag_int("YC");
+    	if (rYC) accYC+=rYC;
+    	   else ++dupCount;
+    	int64_t rYS=rec->tag_int("YS");
+    	if (rYS) accYS+=rYS;
+    	   else if (sampleIdx>=0) samples->set(sampleIdx);
+    }
 
     bool operator<(const SPData& b) {
     	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
@@ -109,12 +139,12 @@ class SPData {
     	if (r->start!=b.r->start) return (r->start<b.r->start);
     	if (r->end!=b.r->end) return (r->end<b.r->end);
 
-    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b->r))<0);
+    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b.r))<0);
     	else
     		switch (mrgStrategy) {
-    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b->r))<0); break;
-    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b->r))<0); break;
-    		  case tMrgStratExon: return (cmpExons(*r, *(b->r))<0); break;
+    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b.r))<0); break;
+    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b.r))<0); break;
+    		  case tMrgStratExon: return (cmpExons(*r, *(b.r))<0); break;
     		  default: GError("Error: unknown merge strategy!\n");
     		}
     	return false;
@@ -124,12 +154,12 @@ class SPData {
     	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
     	if (r->refId()!=b.r->refId() || r->start!=b.r->start ||
     			r->end!=b.r->end) return false;
-    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b->r))==0);
+    	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b.r))==0);
     	else
     		switch (mrgStrategy) {
-    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b->r))==0); break;
-    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b->r))==0); break;
-    		  case tMrgStratExon: return (cmpExons(*r, *(b->r))==0); break;
+    		  case tMrgStratCIGAR: return (cmpCigar(*r, *(b.r))==0); break;
+    		  case tMrgStratClip: return (cmpCigarClip(*r, *(b.r))==0); break;
+    		  case tMrgStratExon: return (cmpExons(*r, *(b.r))==0); break;
     		  default: GError("Error: unknown merge strategy!\n");
     		}
     	return false;
@@ -138,18 +168,42 @@ class SPData {
 
 void processOptions(int argc, char* argv[]);
 
-void addPData(TInputRecord& irec, GList<SPData>& spdata) {
-  //add and collapse
+void addPData(TInputRecord& irec, GList<SPData>& spdlst) {
+  //add and collapse if match found
+	SPData* newspd=new SPData(irec.brec);
+	if (spdlst.Count()>0) {
+		//find if irec can merge into existing SPData
+		SPData* spf=spdlst.AddIfNew(newspd, false);
+		if (spf!=newspd) { //matches existing SP entry spf
+			spf->dupAdd(irec.brec, irec.fidx); //update existing SP entry
+			delete newspd;
+			return;
+		} // not a novel SP data
+		//else newspd was added as a separate entry of spdlst
+	}
+	else { // empty list, just add this
+		spdlst.Add(newspd);
+	}
+	newspd->settle(irec.fidx); //keep its own SAM record copy
 }
 
-void flushPData(GList<SPData>& spdata){ //write spdata to outfile
-  //TODO: write SAM records in spdata to outfile
-  spdata.Clear();
+void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
+  if (spdlst.Count()==0) return;
+  // write SAM records in spdata to outfile
+  for (int i=0;i<spdlst.Count();++i) {
+	  SPData& spd=*(spdlst.Get(i));
+	  int64_t accYC=spd.accYC+spd.dupCount;
+	  int64_t accYS=spd.accYS;
+	  if (spd.dupCount>1) { //just to save an unnecessary GBitVec::count() call?
+	   accYS+=spd.samples->count();
+	  }
+	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
+	  if (accYS>1) spd.r->add_int_tag("YS", accYS);
+	  outfile->write(spd.r);
+	  outCounter++;
+  }
+  spdlst.Clear();
 }
-
-
-bool debugMode=false;
-bool verbose=false;
 
 // >------------------ main() start -----
 int main(int argc, char *argv[])  {
@@ -163,21 +217,21 @@ int main(int argc, char *argv[])  {
 	 TInputRecord* irec=NULL;
 	 GSamRecord* brec=NULL;
 	 GList<SPData> spdata(true, true, true); //list of Same Position data, with all possibly merged records
-	 bool newChr=false;  //flush spdata
-	 bool newPos=false; //flush spdata
+	 //bool newChr=false;
 	 int prev_pos=-1;
 	 int prev_tid=-1;
 	 while ((irec=inRecords.next())!=NULL) {
 		 brec=irec->brec;
 		 if (brec->isUnmapped()) continue;
+		 inCounter++;
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
 		 if (tid!=prev_tid) {
 			 prev_tid=tid;
-			 newChr=true;
+			 //newChr=true;
 			 prev_pos=-1;
 		 }
-		 if (pos!=prev_pos) {
+		 if (pos!=prev_pos) { //new position
 			 flushPData(spdata);
 			 prev_pos=pos;
 		 }
