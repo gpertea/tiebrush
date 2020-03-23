@@ -87,7 +87,7 @@ int TInputFiles::start() {
 	}
 
 	for (int i=0;i<files.Count();++i) {
-		GSamReader* samreader=new GSamReader(files[i].chars());
+		GSamReader* samreader=new GSamReader(files[i].chars(), SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
 		addSam(samreader); //merge SAM headers etc.
 		GSamRecord* brec=samreader->next();
 		if (brec)

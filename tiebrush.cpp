@@ -91,13 +91,13 @@ class SPData {
     bool settled; //real SP data, owns its r data and deallocates it on destroy
   public:
 	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
-	int64_t accYS; //if any merged records had YS tag, their values are accumulated here
+	int64_t accYX; //if any merged records had YX tag, their values are accumulated here
 	GBitVec* samples; //which samples were the collapsed ones coming from
-	                 //number of bits set will be stored as YS:i:(samples.count()+accYS)
+	                 //number of bits set will be stored as YX:i:(samples.count()+accYX)
 	int dupCount; //duplicity count - how many single-alignments were merged into r
 	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
-    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYS(0), samples(NULL),
+    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), samples(NULL),
     		dupCount(0), r(rec) {    }
 
     ~SPData() {
@@ -118,8 +118,8 @@ class SPData {
     	if (samples==NULL) samples=new GBitVec(inRecords.readers.Count());
     	accYC=r->tag_int("YC");
     	if (accYC==0) ++dupCount;
-    	accYS=r->tag_int("YS");
-    	if (accYS==0 && sampleIdx>=0) samples->set(sampleIdx);
+    	accYX=r->tag_int("YX");
+    	if (accYX==0 && sampleIdx>=0) samples->set(sampleIdx);
     }
 
     void dupAdd(GSamRecord* rec, int sampleIdx=-1) { //merge an external SAM record into this one
@@ -128,8 +128,8 @@ class SPData {
     	int64_t rYC=rec->tag_int("YC");
     	if (rYC) accYC+=rYC;
     	   else ++dupCount;
-    	int64_t rYS=rec->tag_int("YS");
-    	if (rYS) accYS+=rYS;
+    	int64_t rYX=rec->tag_int("YX");
+    	if (rYX) accYX+=rYX;
     	   else if (sampleIdx>=0) samples->set(sampleIdx);
     }
 
@@ -194,12 +194,12 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
   for (int i=0;i<spdlst.Count();++i) {
 	  SPData& spd=*(spdlst.Get(i));
 	  int64_t accYC=spd.accYC+spd.dupCount;
-	  int64_t accYS=spd.accYS;
+	  int64_t accYX=spd.accYX;
 	  if (spd.dupCount>1) { //just to save an unnecessary GBitVec::count() call?
-	   accYS+=spd.samples->count();
+	   accYX+=spd.samples->count();
 	  }
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
-	  if (accYS>1) spd.r->add_int_tag("YS", accYS);
+	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
 	  outfile->write(spd.r);
 	  outCounter++;
   }
