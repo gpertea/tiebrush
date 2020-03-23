@@ -10,44 +10,45 @@ void TInputFiles::Add(const char* fn) {
 		files.Add(sfn);
 	}
 
-void TInputFiles::addSam(GSamReader& r) {
+void TInputFiles::addSam(GSamReader* r) {
 	//requirement: all files must have the same number of SQ entries in the same order!
 	kstring_t hd_line = { 0, 0, NULL };
-	int res = sam_hdr_find_hd(r.header(), &hd_line);
+	int res = sam_hdr_find_hd(r->header(), &hd_line);
 	if (res < 0) GError("Error: failed to get @HD line from header");
 	//check for SO:coordinate
 	kstring_t str = KS_INITIALIZE;
-    // Accept unknown, unsorted, or queryname sort order, but error on coordinate sorted.
-    if (!sam_hdr_find_tag_hd(r.header(), "SO", &str) || !str.s || !strcmp(str.s, "coordinate"))
-	        GError("Error: %s file not coordinate-sorted!\n");
+    if (sam_hdr_find_tag_hd(r->header(), "SO", &str)
+    		|| !str.s
+			|| strcmp(str.s, "coordinate") )
+	        GError("Error: %s file not coordinate-sorted!\n", r->fileName());
     ks_free(&hd_line);
 	if (mHdr==NULL) { //first file
-		mHdr=sam_hdr_dup(r.header());
+		mHdr=sam_hdr_dup(r->header());
 		sam_hdr_add_pg(mHdr, "TieBrush",
 				"VN", pg_ver, "CL", pg_args.chars());
 	}
 	else { //check if this file has the same SQ entries in the same order
-		int r_numrefs=sam_hdr_nref(r.header());
+		int r_numrefs=sam_hdr_nref(r->header());
 		if (r_numrefs!=sam_hdr_nref(mHdr))
-			GError("Error: file %s has different number of reference sequences (%d)!\n", r.fileName(), r_numrefs);
+			GError("Error: file %s has different number of reference sequences (%d)!\n", r->fileName(), r_numrefs);
 		for (int i = 0; i < r_numrefs; ++i) {
 			str.l = 0;
-			res = sam_hdr_find_tag_pos(r.header(), "SQ", i, "SN", &str);
+			res = sam_hdr_find_tag_pos(r->header(), "SQ", i, "SN", &str);
 			if (res < 0)
 				GError("Error: failed to get @SQ SN #%d from header\n", i + 1);
 			int m_tid = sam_hdr_name2tid(mHdr, str.s);
 			if (m_tid < -1)
 				GError("Error: unexpected ref lookup failure (%s)!\n", str.s);
 			if (m_tid < 0)
-				GError("Error: ref %s from file %s not seen before!\n", str.s, r.fileName());
-			int r_tid = sam_hdr_name2tid(r.header(), str.s);
+				GError("Error: ref %s from file %s not seen before!\n", str.s, r->fileName());
+			int r_tid = sam_hdr_name2tid(r->header(), str.s);
 			if (r_tid != m_tid)
-					GError("Error: ref %s from file %s does not have the expected id#!", str.s, r.fileName());
+					GError("Error: ref %s from file %s does not have the expected id#!", str.s, r->fileName());
 		}
 	}
 
 	ks_free(&str);
-
+    readers.Add(r);
 }
 
 int TInputFiles::start() {
@@ -59,6 +60,9 @@ int TInputFiles::start() {
 		if (hf==NULL || hf->format.category!=sequence_data) {
 			//must be a list
 			if (hf) hts_close(hf);
+#ifdef _DEBUG
+			GMessage("Warning: try to open file %s as a list.\n", fname.chars());
+#endif
 			FILE* flst=fopen(fname.chars(),"r");
 			if (flst==NULL) GError("Error: could not open input file %s!\n",
 					fname.chars());
@@ -84,7 +88,7 @@ int TInputFiles::start() {
 
 	for (int i=0;i<files.Count();++i) {
 		GSamReader* samreader=new GSamReader(files[i].chars());
-		addSam(*samreader); //merge SAM headers etc.
+		addSam(samreader); //merge SAM headers etc.
 		GSamRecord* brec=samreader->next();
 		if (brec)
 		   recs.Add(new TInputRecord(brec, i));

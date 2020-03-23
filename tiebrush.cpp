@@ -22,8 +22,9 @@ enum TMrgStrategy {
 TMrgStrategy mrgStrategy=tMrgStratFull;
 TInputFiles inRecords;
 
-GSamWriter* outfile=NULL;
 GStr outfname;
+GSamWriter* outfile=NULL;
+
 uint64_t inCounter=0;
 uint64_t outCounter=0;
 
@@ -237,8 +238,13 @@ int main(int argc, char *argv[])  {
 		 }
 		 addPData(*irec, spdata);
 	 }
-     flushPData(spdata);
+    flushPData(spdata);
 	delete outfile;
+	inRecords.stop();
+    //if (verbose) {
+    	double p=100.00 - (double)(outCounter*100.00)/(double)inCounter;
+    	GMessage("%ld input records written as %ld (%.2f%% reduction)\n", inCounter, outCounter, p);
+    //}
 }
 // <------------------ main() end -----
 
@@ -276,7 +282,12 @@ void processOptions(int argc, char* argv[]) {
 	   fprintf(stderr, "Running TieBrush " VERSION ". Command line:\n");
 	   args.printCmdLine(stderr);
 	}
-	GStr outfname=args.getOpt('o');
+	outfname=args.getOpt('o');
+	const char* ifn=NULL;
+	while ( (ifn=args.nextNonOpt())!=NULL) {
+		//input alignment files
+		inRecords.Add(ifn);
+	}
 }
 
 

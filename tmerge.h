@@ -58,7 +58,7 @@ struct TInputFiles {
  public:
 	GVec<GStr> files; //same order as readers
 	GPVec<GSamReader> readers;
-	void addSam(GSamReader& r); //update mHdr data
+	void addSam(GSamReader* r); //update mHdr data
 	GList<TInputRecord> recs; //next record for each
 	TInputFiles():crec(NULL), mHdr(NULL), pg_ver(NULL), pg_args(),
 			files(), readers(true), recs(true, true, true) { }
