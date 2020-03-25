@@ -42,13 +42,18 @@ class GSamRecord: public GSeg {
    int clipL; //soft clipping data, as seen in the CIGAR string
    int clipR;
    int mapped_len; //sum of exon lengths
+   //FIXME: DEBUG only fields
+   char* _cigar;
+   const char* _read;
+   // -- DEBUG only fields
    bool isHardClipped() { return hard_Clipped; }
    bool isSoftClipped() { return soft_Clipped; }
    bool hasIntrons() { return has_Introns; }
    //created from a reader:
    void bfree_on_delete(bool b_free=true) { novel=b_free; }
    GSamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):b(NULL),
-		   iflags(0), b_hdr(b_header), exons(1),  clipL(0), clipR(0), mapped_len(0) {
+		   iflags(0), b_hdr(b_header), exons(1),  clipL(0), clipR(0), mapped_len(0),
+		   _cigar(NULL), _read(NULL) {
       if (from_b==NULL) {
            b=bam_init1();
            novel=true;
@@ -56,6 +61,8 @@ class GSamRecord: public GSeg {
       else {
            b=from_b; //it'll take over from_b
            novel=b_free;
+           _cigar=cigar();
+           _read=name();
       }
 
       b_hdr=b_header;
@@ -64,10 +71,12 @@ class GSamRecord: public GSeg {
 
    //deep copy constructor:
    GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(r.iflags), b_hdr(r.b_hdr),
-		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) {
+		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len),
+		   _cigar(NULL), _read(r._read) {
 	      //makes a new copy of the bam1_t record etc.
 	      b=bam_dup1(r.b);
 	      novel=true; //will also free b when destroyed
+	      _cigar=Gstrdup(r._cigar);
    }
 
    const GSamRecord& operator=(GSamRecord& r) {
@@ -83,10 +92,13 @@ class GSamRecord: public GSeg {
       clipL = r.clipL;
       clipR = r.clipR;
       mapped_len=r.mapped_len;
+      _cigar=Gstrdup(r._cigar);
+      _read=r._read;
       return *this;
       }
 
      void setupCoordinates();
+
      void clear() {
         if (novel) {
            bam_destroy1(b);
@@ -97,6 +109,8 @@ class GSamRecord: public GSeg {
         mapped_len=0;
         b_hdr=NULL;
         iflags=0;
+        GFREE(_cigar);
+        _read=NULL;
     }
 
     ~GSamRecord() {

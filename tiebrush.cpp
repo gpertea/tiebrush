@@ -139,16 +139,6 @@ class SPData {
     	//NOTE: already assuming that start&end must match, no matter the merge strategy
     	if (r->start!=b.r->start) return (r->start<b.r->start);
     	if (r->end!=b.r->end) return (r->end<b.r->end);
-    	//DEBUG only:
-    	char* acig=r->cigar();
-    	char* bcig=b.r->cigar();
-    	const char* aq=r->name();
-    	const char* bq=b.r->name();
-    	uint apos=r->start;
-    	uint bpos=b.r->start;
-    	GFREE(acig);
-    	GFREE(bcig);
-    	//--//
     	if (mrgStrategy==tMrgStratFull) {
     		int ret=cmpFull(*r, *(b.r));
     		return (ret<0);
