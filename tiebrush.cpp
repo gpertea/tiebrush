@@ -97,8 +97,11 @@ class SPData {
 	int dupCount; //duplicity count - how many single-alignments were merged into r
 	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
+	char tstrand; //'-','+' or '.'
     SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), samples(NULL),
-    		dupCount(0), r(rec) {    }
+    		dupCount(0), r(rec), tstrand('.') {
+    	if (r!=NULL) tstrand=r->spliceStrand();
+    }
 
     ~SPData() {
     	if (settled && r!=NULL) delete r;
@@ -138,6 +141,7 @@ class SPData {
     	if (r->refId()!=b.r->refId()) return (r->refId()<b.r->refId());
     	//NOTE: already assuming that start&end must match, no matter the merge strategy
     	if (r->start!=b.r->start) return (r->start<b.r->start);
+    	if (tstrand!=b.tstrand) return (tstrand<b.tstrand);
     	if (r->end!=b.r->end) return (r->end<b.r->end);
     	if (mrgStrategy==tMrgStratFull) {
     		int ret=cmpFull(*r, *(b.r));
@@ -155,7 +159,7 @@ class SPData {
 
     bool operator==(const SPData& b) {
     	if (r==NULL || b.r==NULL) GError("Error: cannot compare uninitialized SAM records\n");
-    	if (r->refId()!=b.r->refId() || r->start!=b.r->start ||
+    	if (r->refId()!=b.r->refId() || r->start!=b.r->start || tstrand!=b.tstrand ||
     			r->end!=b.r->end) return false;
     	if (mrgStrategy==tMrgStratFull) return (cmpFull(*r, *(b.r))==0);
     	else
