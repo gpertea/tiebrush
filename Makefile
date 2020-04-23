@@ -3,13 +3,21 @@ XLIB := /ccb/sw/lib
 GDIR := ../gclib
 PKGPATH := $(if $(XLIB),--with-path=$(XLIB)/pkgconfig,${XLIB})
 HTSLIBS := $(shell pkg-config ${PKGPATH} --libs --static htslib)
-HTSINC := $(shell pkg-config ${PKGPATH} --cflags htslib)
-
 ifeq ($(HTSLIBS),)
  $(error ERROR: htslib installation not found. Please install htslib first)
 endif
 
-#--speeds up de/compression of BAM/CRAM
+HTSINC := $(shell pkg-config ${PKGPATH} --cflags htslib)
+HLDIR := $(shell pkg-config ${PKGPATH} --libs-only-L htslib)
+HLDIR := $(HLDIR:-L%=%)
+
+
+#ifeq (${HLDIR}/libhts.a,$(wildcard ${HLDIR}/libhts.a))
+# HTSLIBS := $(subst -lhts,${HLDIR}/libhts.a,${HTSLIBS})
+#endif
+
+
+### libdeflate speeds up de/compression of BAM/CRAM
 # leave it blank if not available
 #LIBDEFLATE :=
 #LIBDEFLATE := $(if $(LIBDEFLATE),$(LIBDEFLATE),/ccb/sw/lib/libdeflate.a)
