@@ -1,6 +1,5 @@
 ## add additional library path here if needed (where libhts.a was installed)
 XLIB := /ccb/sw/lib
-SAM  := ../htslib
 GDIR := ../gclib
 PKGPATH := $(if $(XLIB),--with-path=$(XLIB)/pkgconfig,${XLIB})
 HTSLIBS := $(shell pkg-config ${PKGPATH} --libs --static htslib)
@@ -132,7 +131,7 @@ endif
 ifdef DEBUG_BUILD
   #$(warning Building DEBUG version of tiebrush.. )
   DBG_WARN=@echo
-  DBG_WARN+='WARNING: built DEBUG version [much slower], use "make clean release" for a faster, optimized version of the program.'
+  DBG_WARN+='WARNING: built DEBUG version, use "make clean release" for a faster version of the program.'
 endif
 
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o ./tmerge.o
