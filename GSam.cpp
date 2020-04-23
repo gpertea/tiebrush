@@ -1,5 +1,6 @@
 #include "GSam.h"
 #include <ctype.h>
+/*
 //for bam1_t (re)allocation functions:
 // sam_realloc_bam_data(), realloc_bam_data(), possibly_expand_bam_data()
 #include "sam_internal.h"
@@ -10,13 +11,14 @@
 #define  _get_bmem(type_t, x, b, l) if (possibly_expand_bam_data((b), (l)) < 0) \
  GError("Error: cannot allocate SAM data\n"); \
  *(x) = (type_t*)((b)->data + (b)->l_data); (b)->l_data += (l)
+*/
 #define _parse_err(cond, msg) if (cond) GError("Error [SAM parsing]: %s\n",msg);
 #define _parse_warn(cond, msg) if (cond) GMessage("Warning [SAM parsing]: %s\n",msg);
 #define _parse_mem_err() GError("Error [SAM parsing]: memory allocation problem!\n");
 
 #define _cigOp(c) ((c)&BAM_CIGAR_MASK)
 #define _cigLen(c) ((c)>>BAM_CIGAR_SHIFT)
-
+/*
 GSamRecord::GSamRecord(const char* qname, int32_t gseq_tid,
                  int pos, bool reverse, const char* qseq,
                  const char* cigar, const char* quals):iflags(0), exons(1),
@@ -94,7 +96,9 @@ GSamRecord::GSamRecord(const char* qname, int32_t samflags, int32_t g_tid,
        }
     }
 }
+*/
 
+/*
 void GSamRecord::set_cigar(const char* str) {
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
   // also expects the b record memory to not be allocated already (fresh record creation)
@@ -179,7 +183,7 @@ void GSamRecord::set_cigar(const char* str) {
    //uint8_t* p=bam_get_qual(b);
    for (int i=0;i < b->core.l_qseq; i++) t[i] = quals[i]-33;
  }
-
+*/
  void GSamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
      //--check the "// aux" section in sam_parse1() htslib/sam.c

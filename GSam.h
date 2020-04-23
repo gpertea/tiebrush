@@ -134,6 +134,7 @@ class GSamRecord: public GSeg {
       b->core.flag=samflags;
     }
 
+    /* //implementing these requires access to htslib internals (sam_internal.h)
     //creates a new record from 1-based alignment coordinate
     //quals should be given as Phred33
     //Warning: pos and mate_pos must be given 1-based!
@@ -144,9 +145,11 @@ class GSamRecord: public GSeg {
              int insert_size, const char* qseq, const char* quals=NULL,
              GVec<char*>* aux_strings=NULL);
              //const std::vector<std::string>* aux_strings=NULL);
-    void set_cigar(const char* str); //converts and adds CIGAR string given in plain SAM text format
+
     void add_sequence(const char* qseq, int slen=-1); //adds the DNA sequence given in plain text format
     void add_quals(const char* quals); //quality values string in Phred33 format
+    void set_cigar(const char* str); //converts and adds CIGAR string given in plain SAM text format
+    */
     void add_aux(const char* str); //adds one aux field in plain SAM text format (e.g. "NM:i:1")
     int  add_aux(const char tag[2], char atype, int len, uint8_t *data) {
       //IMPORTANT:  strings (Z,H) should include the terminal \0
@@ -429,6 +432,7 @@ class GSamWriter {
       return sam_hdr_name2tid(hdr, seq_name);
       }
 
+   /* -- these are tied to the htslib internals (sam_internal.h)
    //just a convenience function for creating a new record, but it's NOT written
    //given pos must be 1-based (so it'll be stored as pos-1 because BAM is 0-based)
    GSamRecord* new_record(const char* qname, const char* gseqname,
@@ -473,7 +477,7 @@ class GSamWriter {
       return (new GSamRecord(qname, samflags, gseq_tid, pos, map_qual, cigar,
               mgseq_tid, mate_pos, insert_size, qseq, quals, aux_strings));
       }
-
+   */
    void write(GSamRecord* brec) {
       if (brec!=NULL) {
           if (sam_write1(this->bam_file,this->hdr, brec->b)<0)

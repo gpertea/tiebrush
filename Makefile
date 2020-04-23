@@ -1,15 +1,21 @@
+## add additional library path here if needed (where libhts.a was installed)
+XLIB := /ccb/sw/lib
 SAM  := ../htslib
 GDIR := ../gclib
+PKGPATH := $(if $(XLIB),--with-path=$(XLIB)/pkgconfig,${XLIB})
+HTSLIBS := $(shell pkg-config ${PKGPATH} --libs --static htslib)
+HTSINC := $(shell pkg-config ${PKGPATH} --cflags htslib)
+
+ifeq ($(HTSLIBS),)
+ $(error ERROR: htslib installation not found. Please install htslib first)
+endif
 
 #--speeds up de/compression of BAM/CRAM
 # leave it blank if not available
 #LIBDEFLATE :=
-LIBDEFLATE := $(if $(LIBDEFLATE),$(LIBDEFLATE),/ccb/sw/lib/libdeflate.a)
+#LIBDEFLATE := $(if $(LIBDEFLATE),$(LIBDEFLATE),/ccb/sw/lib/libdeflate.a)
 
-SAMINC := $(if $(SAMINC),$(SAMINC),${SAM})
-SAMLIB := $(if $(SAMLIB),$(SAMLIB),${SAM})
-
-INCDIRS := -I. -I${GDIR} -I${SAMINC}
+INCDIRS := -I${GDIR} ${HTSINC}
 
 CXX   := $(if $(CXX),$(CXX),g++)
 
@@ -30,9 +36,10 @@ LINKER  := $(if $(LINKER),$(LINKER),g++)
 
 LDFLAGS := $(if $(LDFLAGS),$(LDFLAGS),-g)
 
-LDFLAGS += -L${SAMLIB}
 
-LIBS :=${SAMLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto
+#LIBS :=${SAMLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto
+
+LIBS := ${HTSLIBS}
 
 ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
  NOTHREADS=1
