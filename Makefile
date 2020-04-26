@@ -1,14 +1,14 @@
 ## add additional library path here if needed (where libhts.a was installed)
 XLIB := /ccb/sw/lib
 GDIR := ../gclib
-PKGPATH := $(if $(XLIB),--with-path=$(XLIB)/pkgconfig,${XLIB})
-HTSLIBS := $(shell pkg-config ${PKGPATH} --libs --static htslib)
+PKGPATH := $(if $(XLIB),export PKG_CONFIG_PATH=$(XLIB)/pkgconfig,true)
+HTSLIBS := $(shell ${PKGPATH}; pkg-config --libs --static htslib)
 ifeq ($(HTSLIBS),)
  $(error ERROR: htslib installation not found. Please install htslib first)
 endif
 
-HTSINC := $(shell pkg-config ${PKGPATH} --cflags htslib)
-HLDIR := $(shell pkg-config ${PKGPATH} --libs-only-L htslib)
+HTSINC := $(shell ${PKGPATH}; pkg-config --cflags htslib)
+HLDIR := $(shell ${PKGPATH};pkg-config --libs-only-L htslib)
 HLDIR := $(HLDIR:-L%=%)
 
 
