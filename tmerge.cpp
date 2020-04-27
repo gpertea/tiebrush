@@ -55,7 +55,7 @@ void TInputFiles::addSam(GSamReader* r) {
 		}
 		if (swapHdr) {
 			sam_hdr_destroy(mHdr);
-			sam_hdr_dup(r->header());
+			mHdr=sam_hdr_dup(r->header());
 		}
 	}
 
