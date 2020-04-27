@@ -26,24 +26,36 @@ void TInputFiles::addSam(GSamReader* r) {
 		mHdr=sam_hdr_dup(r->header());
 		sam_hdr_add_pg(mHdr, "TieBrush",
 				"VN", pg_ver, "CL", pg_args.chars());
+		//int numrefs=sam_hdr_nref(mHdr);
+		//GMessage("Error: file %s has %d reference sequences.\n", r->fileName(), numrefs);
 	}
 	else { //check if this file has the same SQ entries in the same order
+		//if it has more seqs, make it the main header
 		int r_numrefs=sam_hdr_nref(r->header());
-		if (r_numrefs!=sam_hdr_nref(mHdr))
-			GError("Error: file %s has different number of reference sequences (%d)!\n", r->fileName(), r_numrefs);
-		for (int i = 0; i < r_numrefs; ++i) {
+		int m_nrefs=sam_hdr_nref(mHdr);
+		bool swapHdr=(r_numrefs>m_nrefs);
+		sam_hdr_t *loHdr = swapHdr ? mHdr : r->header();
+		sam_hdr_t *hiHdr = swapHdr ? r->header() : mHdr;
+		int loNum = swapHdr ? m_nrefs : r_numrefs;
+		//if (r_numrefs!=m_nrefs)
+		// GError("Error: file %s has different number of reference sequences (%d)!\n", r->fileName(), r_numrefs);
+		for (int i = 0; i < loNum; ++i) {
 			str.l = 0;
-			res = sam_hdr_find_tag_pos(r->header(), "SQ", i, "SN", &str);
+			res = sam_hdr_find_tag_pos(loHdr, "SQ", i, "SN", &str);
 			if (res < 0)
 				GError("Error: failed to get @SQ SN #%d from header\n", i + 1);
-			int m_tid = sam_hdr_name2tid(mHdr, str.s);
+			int m_tid = sam_hdr_name2tid(hiHdr, str.s);
 			if (m_tid < -1)
 				GError("Error: unexpected ref lookup failure (%s)!\n", str.s);
 			if (m_tid < 0)
-				GError("Error: ref %s from file %s not seen before!\n", str.s, r->fileName());
-			int r_tid = sam_hdr_name2tid(r->header(), str.s);
+				GError("Error: ref %s not seen before!\n", str.s);
+			int r_tid = sam_hdr_name2tid(loHdr, str.s);
 			if (r_tid != m_tid)
 					GError("Error: ref %s from file %s does not have the expected id#!", str.s, r->fileName());
+		}
+		if (swapHdr) {
+			sam_hdr_destroy(mHdr);
+			sam_hdr_dup(r->header());
 		}
 	}
 
