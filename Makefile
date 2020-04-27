@@ -1,14 +1,14 @@
 ## add additional library path here if needed (where libhts.a was installed)
 XLIB := /ccb/sw/lib
 GDIR := ../gclib
-PKGPATH := $(if $(XLIB),--with-path=$(XLIB)/pkgconfig,${XLIB})
-HTSLIBS := $(shell pkg-config ${PKGPATH} --libs --static htslib)
+PKGPATH := $(if $(XLIB),export PKG_CONFIG_PATH=$(XLIB)/pkgconfig,true)
+HTSLIBS := $(shell ${PKGPATH}; pkg-config --libs --static htslib)
 ifeq ($(HTSLIBS),)
  $(error ERROR: htslib installation not found. Please install htslib first)
 endif
 
-HTSINC := $(shell pkg-config ${PKGPATH} --cflags htslib)
-HLDIR := $(shell pkg-config ${PKGPATH} --libs-only-L htslib)
+HTSINC := $(shell ${PKGPATH}; pkg-config --cflags htslib)
+HLDIR := $(shell ${PKGPATH};pkg-config --libs-only-L htslib)
 HLDIR := $(HLDIR:-L%=%)
 
 
@@ -48,9 +48,9 @@ LDFLAGS := $(if $(LDFLAGS),$(LDFLAGS),-g)
 
 LIBS := ${HTSLIBS}
 
-ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
- NOTHREADS=1
-endif
+#ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
+# NOTHREADS=1
+#endif
 
 #detect MinGW (Windows environment)
 ifneq (,$(findstring mingw,$(shell ${CXX} -dumpmachine)))
@@ -69,18 +69,6 @@ ifdef WINDOWS
  EXE = .exe
 else
  EXE =
-endif
-
-# Non-windows systems need pthread
-ifndef WINDOWS
- ifndef NOTHREADS
-   LIBS := -pthread ${LIBS} -lpthread
-   BASEFLAGS += -pthread
- endif
-endif
-
-ifdef NOTHREADS
-  BASEFLAGS += -DNOTHREADS
 endif
 
 DMACH := $(shell ${CXX} -dumpmachine)
@@ -152,9 +140,9 @@ ifneq (,$(filter %memtrace %memusage %memuse, $(MAKECMDGOALS)))
     OBJS += ${GDIR}/proc_mem.o
 endif
 
-ifndef NOTHREADS
- OBJS += ${GDIR}/GThreads.o 
-endif
+#ifndef NOTHREADS
+# OBJS += ${GDIR}/GThreads.o 
+#endif
 
 %.o : %.cpp
 	${CXX} ${CXXFLAGS} -c $< -o $@
@@ -164,7 +152,7 @@ endif
 all release static debug: tiebrush${EXE}
 memcheck memdebug tsan tcheck thrcheck: tiebrush${EXE}
 memuse memusage memtrace: tiebrush${EXE}
-nothreads: tiebrush${EXE}
+#nothreads: tiebrush${EXE}
 
 GSam.o : GSam.h
 tiebrush.o : GSam.h tmerge.h
