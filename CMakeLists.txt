@@ -7,7 +7,6 @@ include(ExternalProject)
 
 set(CMAKE_CXX_STANDARD 11)
 
-#include("cmake/gclib.cmake")
 include("cmake/zlib.cmake")
 include("cmake/htslib.cmake")
 
@@ -36,8 +35,6 @@ add_executable(tiebrush src/tiebrush.cpp
                         ${gclib_SOURCE_DIR}/GArgs.cpp
                         ${gclib_SOURCE_DIR}/GBase.h
                         ${gclib_SOURCE_DIR}/GBase.cpp)
-
-#target_include_directories(tiebrush PUBLIC ${gclib_LIB})
 
 add_dependencies(tiebrush htslib zlib)
 target_link_libraries(tiebrush ${htslib_LIB} ${zlib_LIB} -lbz2 -llzma -pthread -lcrypto -lcurl)
