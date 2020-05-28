@@ -9,11 +9,11 @@ ExternalProject_Add(htslib
         GIT_TAG ""
         UPDATE_COMMAND ""
         BUILD_IN_SOURCE 1
-        CONFIGURE_COMMAND autoreconf && ${htslib_PREFIX}/src/htslib/configure --prefix=${htslib_INSTALL}
-        BUILD_COMMAND make lib-static
-        INSTALL_COMMAND make install prefix=${htslib_INSTALL}
+        CONFIGURE_COMMAND autoheader COMMAND autoconf COMMAND ${htslib_PREFIX}/src/htslib/configure
+        BUILD_COMMAND make -C ${htslib_PREFIX}/src/htslib "CFLAGS=-g -Wall -O3" libhts.a
+        INSTALL_COMMAND ""
         )
 
 add_dependencies(htslib zlib)
-include_directories(${htslib_INSTALL}/include)
-set(htslib_LIB ${htslib_INSTALL}/lib/libhts.a)
+include_directories(${htslib_PREFIX}/src/htslib)
+set(htslib_LIB ${htslib_PREFIX}/src/htslib/libhts.a)

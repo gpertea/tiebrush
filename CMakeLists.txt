@@ -8,6 +8,7 @@ include(ExternalProject)
 set(CMAKE_CXX_STANDARD 11)
 
 include("cmake/zlib.cmake")
+#include("cmake/libdeflate.cmake")
 include("cmake/htslib.cmake")
 
 include(FetchContent)
@@ -17,7 +18,10 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/gpertea/gclib.git
 )
 
-FetchContent_MakeAvailable(gclib)
+FetchContent_GetProperties(gclib)
+if(NOT gclib_POPULATED)
+    FetchContent_Populate(gclib)
+endif()
 
 message(STATUS "gclib source dir: ${gclib_SOURCE_DIR}")
 message(STATUS "gclib binary dir: ${gclib_BINARY_DIR}")
