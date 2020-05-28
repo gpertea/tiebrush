@@ -15,7 +15,8 @@ const char* USAGE="TieBrush v" VERSION " usage:\n"
 " Other options: \n"
 "  --cigar,-C   : merge if only CIGAR string is the same\n"
 "  --clip,-P    : merge if clipped CIGAR string is the same\n"
-"  --exon,-E   : merge if exon boundaries are the same\n";
+"  --exon,-E    : merge if exon boundaries are the same\n"
+"  --bedcov,-B  : report coverage information in BED format\n";
 
 enum TMrgStrategy {
 	tMrgStratFull=0, // same CIGAR and MD
@@ -35,6 +36,8 @@ uint64_t outCounter=0;
 
 bool debugMode=false;
 bool verbose=false;
+
+bool report_bedcov=false;
 
 int cmpFull(GSamRecord& a, GSamRecord& b) {
 	//-- CIGAR && MD strings
@@ -303,7 +306,7 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	  }
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
 	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
-      incCov(outfile->get_header(),spd.r->get_b(),accYC);
+      if(report_bedcov){incCov(outfile->get_header(),spd.r->get_b(),accYC);}
 	  outfile->write(spd.r);
 	  outCounter++;
   }
@@ -334,7 +337,7 @@ int main(int argc, char *argv[])  {
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
 		 if (tid!=prev_tid) {
-             cleanPriorityQueue(outfile->get_header());
+		     if(report_bedcov){cleanPriorityQueue(outfile->get_header());};
 			 prev_tid=tid;
 			 //newChr=true;
 			 prev_pos=-1;
@@ -348,8 +351,8 @@ int main(int argc, char *argv[])  {
 		 addPData(*irec, spdata);
 	 }
     flushPData(spdata);
-    cleanPriorityQueue(outfile->get_header());
-	covInterval.write(outfile->get_header());
+    if(report_bedcov){cleanPriorityQueue(outfile->get_header());}
+    if(report_bedcov){covInterval.write(outfile->get_header());}
 	delete outfile;
 	inRecords.stop();
     //if (verbose) {
@@ -360,7 +363,7 @@ int main(int argc, char *argv[])  {
 // <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-	GArgs args(argc, argv, "help;debug;verbose;version;cigar;clip;exon;CPEDVho:");
+	GArgs args(argc, argv, "help;debug;verbose;version;cigar;clip;exon;bedcov;CPEBDVho:");
 	args.printError(USAGE, true);
 	if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
 		GMessage(USAGE);
@@ -374,6 +377,7 @@ void processOptions(int argc, char* argv[]) {
 	bool stratC=(args.getOpt("cigar")!=NULL || args.getOpt('C')!=NULL);
 	bool stratP=(args.getOpt("clip")!=NULL || args.getOpt('P')!=NULL);
 	bool stratE=(args.getOpt("exon")!=NULL || args.getOpt('E')!=NULL);
+    report_bedcov=(args.getOpt("bedcov")!=NULL || args.getOpt('B')!=NULL);
 	if (stratC | stratP | stratE) {
 		if (!(stratC ^ stratP ^ stratE))
 			GError("Error: only one merging strategy can be requested.\n");
