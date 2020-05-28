@@ -14,8 +14,13 @@
 const char* USAGE="TieCov v" VERSION " usage:\n"
                   " tiecov [-o out.bed] in.bam\n"
                   " Other options: \n"
-                  "  --min_nh,-N   : minimum NH score (if available) to include when reporting coverage\n"
-                  "  --min_qual,-Q    : minimum mapping quality to include when reporting coverage\n";
+                  "  -N   : maximum NH score (if available) to include when reporting coverage\n"
+                  "  -Q   : minimum mapping quality to include when reporting coverage\n";
+
+struct Filters{
+    int max_nh = MAX_INT;
+    int min_qual = -1;
+} filters;
 
 TInputFiles inRecords;
 
@@ -152,6 +157,16 @@ int getYC(bam1_t *in_rec){
     }
 }
 
+int getNH(bam1_t *in_rec){
+    uint8_t* ptr_nh_1=bam_aux_get(in_rec,"NH");
+    if(ptr_nh_1){
+        return bam_aux2i(ptr_nh_1);
+    }
+    else{
+        return -1;
+    }
+}
+
 // >------------------ main() start -----
 int main(int argc, char *argv[])  {
     inRecords.setup(VERSION, argc, argv);
@@ -168,7 +183,12 @@ int main(int argc, char *argv[])  {
     int prev_tid=-1;
     while ((irec=inRecords.next())!=NULL) {
         brec=irec->brec;
+
         if (brec->isUnmapped()) continue;
+        int nh = getNH(brec->get_b());
+        if(nh>filters.max_nh){continue;}
+        if (brec->get_b()->core.qual<filters.min_qual){continue;}
+
         int tid=brec->refId();
         if (tid!=prev_tid) {
             cleanPriorityQueue(inRecords.header());
@@ -185,7 +205,7 @@ int main(int argc, char *argv[])  {
 // <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-    GArgs args(argc, argv, "help;debug;verbose;version;DVho:");
+    GArgs args(argc, argv, "help;debug;verbose;version;DVho:N:Q:");
     args.printError(USAGE, true);
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
         GMessage(USAGE);
@@ -195,6 +215,15 @@ void processOptions(int argc, char* argv[]) {
     if (args.getOpt('h') || args.getOpt("help")) {
         fprintf(stdout,"%s",USAGE);
         exit(0);
+    }
+
+    GStr max_nh_str=args.getOpt('N');
+    if (!max_nh_str.is_empty()) {
+        filters.max_nh=max_nh_str.asInt();
+    }
+    GStr min_qual_str=args.getOpt('Q');
+    if (!min_qual_str.is_empty()) {
+        filters.min_qual=min_qual_str.asInt();
     }
 
     debugMode=(args.getOpt("debug")!=NULL || args.getOpt('D')!=NULL);
