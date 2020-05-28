@@ -7,28 +7,19 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <fstream>
 
 #define VERSION "0.0.1"
 
-const char* USAGE="TieBrush v" VERSION " usage:\n"
-                  " tiebrush [-o <outfile>.bam] list.txt | in1.bam in2.bam ...\n"
+const char* USAGE="TieCov v" VERSION " usage:\n"
+                  " tiecov [-o out.bed] in.bam\n"
                   " Other options: \n"
-                  "  --cigar,-C   : merge if only CIGAR string is the same\n"
-                  "  --clip,-P    : merge if clipped CIGAR string is the same\n"
-                  "  --exon,-E   : merge if exon boundaries are the same\n";
+                  "  --min_nh,-N   : minimum NH score (if available) to include when reporting coverage\n"
+                  "  --min_qual,-Q    : minimum mapping quality to include when reporting coverage\n";
 
-enum TMrgStrategy {
-    tMrgStratFull=0, // same CIGAR and MD
-    tMrgStratCIGAR,  // same CIGAR (MD may differ)
-    tMrgStratClip,   // same CIGAR after clipping
-    tMrgStratExon    // same exons
-};
-
-TMrgStrategy mrgStrategy=tMrgStratFull;
 TInputFiles inRecords;
 
 GStr outfname;
-GSamWriter* outfile=NULL;
 
 uint64_t inCounter=0;
 uint64_t outCounter=0;
@@ -46,6 +37,20 @@ struct CovInterval{
     int start=-1; // start position
     int end=-1; // end position
     int cov=-1; // current coverage for the interval
+
+    CovInterval() = default;
+    ~CovInterval(){
+        if(cov_ss.is_open()){
+            this->cov_ss.close();
+        }
+    }
+
+    void set_outfname(std::string out_fname){
+        if(out_fname=="-" || out_fname.empty()){
+            return;
+        }
+        this->cov_ss.open(out_fname,std::ios::out);
+    }
 
     void extend(bam_hdr_t *al_hdr,int new_tid,int pos,int new_cov){
         if(tid == -1){
@@ -67,8 +72,15 @@ struct CovInterval{
     }
 
     void write(sam_hdr_t *al_hdr){
-        fprintf(stdout,"%s\t%d\t%d\t%d\n",al_hdr->target_name[tid],start,end,cov);
+        if(cov_ss.is_open()){
+            cov_ss<<al_hdr->target_name[tid]<<"\t"<<start<<"\t"<<end<<"\t"<<cov<<std::endl;
+        }
+        else{
+            fprintf(stdout,"%s\t%d\t%d\t%d\n",al_hdr->target_name[tid],start,end,cov);
+        }
     }
+private:
+    std::fstream cov_ss;
 } covInterval;
 
 void cleanPriorityQueue(sam_hdr_t* al_hdr){ // cleans all entries
@@ -148,6 +160,7 @@ int main(int argc, char *argv[])  {
     if (outfname.is_empty()) outfname="-";
     GSamFileType oftype=(outfname=="-") ?
                         GSamFile_SAM : GSamFile_BAM;
+    covInterval.set_outfname(outfname.chars());
 
     TInputRecord* irec=NULL;
     GSamRecord* brec=NULL;
@@ -172,7 +185,7 @@ int main(int argc, char *argv[])  {
 // <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-    GArgs args(argc, argv, "help;debug;verbose;version;cigar;clip;exon;CPEDVho:");
+    GArgs args(argc, argv, "help;debug;verbose;version;DVho:");
     args.printError(USAGE, true);
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
         GMessage(USAGE);
@@ -183,16 +196,6 @@ void processOptions(int argc, char* argv[]) {
         fprintf(stdout,"%s",USAGE);
         exit(0);
     }
-    bool stratC=(args.getOpt("cigar")!=NULL || args.getOpt('C')!=NULL);
-    bool stratP=(args.getOpt("clip")!=NULL || args.getOpt('P')!=NULL);
-    bool stratE=(args.getOpt("exon")!=NULL || args.getOpt('E')!=NULL);
-    if (stratC | stratP | stratE) {
-        if (!(stratC ^ stratP ^ stratE))
-            GError("Error: only one merging strategy can be requested.\n");
-        if (stratC) mrgStrategy=tMrgStratCIGAR;
-        else if (stratP) mrgStrategy=tMrgStratClip;
-        else mrgStrategy=tMrgStratExon;
-    }
 
     debugMode=(args.getOpt("debug")!=NULL || args.getOpt('D')!=NULL);
     verbose=(args.getOpt("verbose")!=NULL || args.getOpt('V')!=NULL);
@@ -202,7 +205,7 @@ void processOptions(int argc, char* argv[]) {
     }
     //verbose=(args.getOpt('v')!=NULL);
     if (verbose) {
-        fprintf(stderr, "Running TieBrush " VERSION ". Command line:\n");
+        fprintf(stderr, "Running TieCov " VERSION ". Command line:\n");
         args.printCmdLine(stderr);
     }
     outfname=args.getOpt('o');
