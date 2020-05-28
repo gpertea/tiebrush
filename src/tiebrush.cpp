@@ -3,6 +3,11 @@
 #include "tmerge.h"
 #include "GBitVec.h"
 
+#include <set>
+#include <functional>
+#include <iostream>
+#include <map>
+
 #define VERSION "0.0.1"
 
 const char* USAGE="TieBrush v" VERSION " usage:\n"
@@ -10,7 +15,8 @@ const char* USAGE="TieBrush v" VERSION " usage:\n"
 " Other options: \n"
 "  --cigar,-C   : merge if only CIGAR string is the same\n"
 "  --clip,-P    : merge if clipped CIGAR string is the same\n"
-"  --exon,-E   : merge if exon boundaries are the same\n";
+"  --exon,-E    : merge if exon boundaries are the same\n"
+"  --bedcov,-B  : report coverage information in BED format\n";
 
 enum TMrgStrategy {
 	tMrgStratFull=0, // same CIGAR and MD
@@ -30,6 +36,8 @@ uint64_t outCounter=0;
 
 bool debugMode=false;
 bool verbose=false;
+
+bool report_bedcov=false;
 
 int cmpFull(GSamRecord& a, GSamRecord& b) {
 	//-- CIGAR && MD strings
@@ -194,6 +202,98 @@ void addPData(TInputRecord& irec, GList<SPData>& spdlst) {
 	newspd->settle(irec.fidx); //keep its own SAM record copy
 }
 
+std::map<std::pair<uint16_t,uint32_t>,uint16_t,std::less<std::pair<uint16_t,uint32_t>> > cov_pq; // since RB+ Tree is sorted by std::greater - smallest position (pair of seqid and pos) will always be at the top (begin())
+std::pair<std::map<std::pair<uint16_t,uint32_t>,uint16_t,std::less<std::pair<uint16_t,uint32_t>> >::iterator,bool>  cpq_it;
+
+struct CovInterval{
+    int tid=-1;
+    int start=-1; // start position
+    int end=-1; // end position
+    int cov=-1; // current coverage for the interval
+
+    void extend(bam_hdr_t *al_hdr,int new_tid,int pos,int new_cov){
+        if(tid == -1){
+            tid=new_tid;
+            start=pos;
+            end=pos;
+            cov=new_cov;
+        }
+        else if(tid==new_tid && pos-end==1 && cov==new_cov){ // position can extend the interval
+            end++;
+        }
+        else{
+            write(al_hdr);
+            tid=new_tid;
+            start=pos;
+            end=pos;
+            cov=new_cov;
+        }
+    }
+
+    void write(sam_hdr_t *al_hdr){
+        fprintf(stdout,"%s\t%d\t%d\t%d\n",al_hdr->target_name[tid],start,end,cov);
+    }
+} covInterval;
+
+void cleanPriorityQueue(sam_hdr_t* al_hdr){ // cleans all entries
+    for(auto& pq : cov_pq){
+        covInterval.extend(al_hdr,pq.first.first,pq.first.second,pq.second);
+    }
+    cov_pq.clear();
+}
+
+void cleanPriorityQueue(sam_hdr_t* al_hdr,int tid,int pos){ // process and remove all positions upto but not including the given position
+    if(cov_pq.empty()){
+        return;
+    }
+    while(!cov_pq.empty() && cov_pq.begin()->first < std::pair<uint16_t,uint32_t>(tid,pos)){
+        covInterval.extend(al_hdr,cov_pq.begin()->first.first,cov_pq.begin()->first.second,cov_pq.begin()->second);
+        cov_pq.erase(cov_pq.begin());
+    }
+}
+
+void incCov(sam_hdr_t *al_hdr,bam1_t *in_rec,int dupCount){
+    // remove all elements from the priority queue which indicate positions smaller than current
+    // iterate over positions following cigar and add to the priority queue
+    int pos=in_rec->core.pos+1; // 1-based
+
+    bool first_match = true; // indicates whether the first match position has been encountered - triggers cleanup of the priority queue
+
+    for (uint8_t c=0;c<in_rec->core.n_cigar;++c){
+        uint32_t *cigar_full=bam_get_cigar(in_rec);
+        int opcode=bam_cigar_op(cigar_full[c]);
+        int oplen=bam_cigar_oplen(cigar_full[c]);
+
+        switch(opcode){
+            case BAM_CINS: // no change in coverage and position
+                break;
+            case BAM_CDEL: // skip to the next position - no change in coverage
+                pos+=oplen;
+                break;
+            case BAM_CREF_SKIP: // skip to the next position - no change in coverage
+                pos+=oplen;
+                break;
+            case BAM_CSOFT_CLIP: // skip to the next position - no change in coverage
+                pos+=oplen;
+                break;
+            case BAM_CMATCH: // skip to the next position - no change in coverage
+                if(first_match){
+                    cleanPriorityQueue(al_hdr,in_rec->core.tid,pos);
+                    first_match=false;
+                }
+                for(int i=0;i<oplen;i++){ // add coverage for each position
+                    cpq_it = cov_pq.insert(std::make_pair(std::make_pair(in_rec->core.tid,pos),0));
+                    cpq_it.first->second+=dupCount;
+                    pos+=1;
+                }
+                break;
+            default:
+                fprintf(stderr,"ERROR: unknown opcode: %c from read: %s",bam_cigar_opchr(opcode),bam_get_qname(in_rec));
+                exit(-1);
+        }
+    }
+}
+
 void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
   if (spdlst.Count()==0) return;
   // write SAM records in spdata to outfile
@@ -206,9 +306,11 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	  }
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
 	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
+      if(report_bedcov){incCov(outfile->get_header(),spd.r->get_b(),accYC);}
 	  outfile->write(spd.r);
 	  outCounter++;
   }
+
   spdlst.Clear();
 }
 
@@ -235,17 +337,22 @@ int main(int argc, char *argv[])  {
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
 		 if (tid!=prev_tid) {
+		     if(report_bedcov){cleanPriorityQueue(outfile->get_header());};
 			 prev_tid=tid;
 			 //newChr=true;
 			 prev_pos=-1;
 		 }
 		 if (pos!=prev_pos) { //new position
-			 flushPData(spdata);
+		     // all possible reads collapsed for the current set of coordinates
+		     // add each position to the priority queue. If already exists - add the current count of reads in the collapsed record
+		     flushPData(spdata);
 			 prev_pos=pos;
 		 }
 		 addPData(*irec, spdata);
 	 }
     flushPData(spdata);
+    if(report_bedcov){cleanPriorityQueue(outfile->get_header());}
+    if(report_bedcov){covInterval.write(outfile->get_header());}
 	delete outfile;
 	inRecords.stop();
     //if (verbose) {
@@ -256,7 +363,7 @@ int main(int argc, char *argv[])  {
 // <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-	GArgs args(argc, argv, "help;debug;verbose;version;cigar;clip;exon;CPEDVho:");
+	GArgs args(argc, argv, "help;debug;verbose;version;cigar;clip;exon;bedcov;CPEBDVho:");
 	args.printError(USAGE, true);
 	if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
 		GMessage(USAGE);
@@ -270,6 +377,7 @@ void processOptions(int argc, char* argv[]) {
 	bool stratC=(args.getOpt("cigar")!=NULL || args.getOpt('C')!=NULL);
 	bool stratP=(args.getOpt("clip")!=NULL || args.getOpt('P')!=NULL);
 	bool stratE=(args.getOpt("exon")!=NULL || args.getOpt('E')!=NULL);
+    report_bedcov=(args.getOpt("bedcov")!=NULL || args.getOpt('B')!=NULL);
 	if (stratC | stratP | stratE) {
 		if (!(stratC ^ stratP ^ stratE))
 			GError("Error: only one merging strategy can be requested.\n");
