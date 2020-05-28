@@ -1,3 +1,4 @@
+#include <header.h>
 #include "tmerge.h"
 
 void TInputFiles::Add(const char* fn) {
@@ -24,8 +25,9 @@ void TInputFiles::addSam(GSamReader* r) {
     ks_free(&hd_line);
 	if (mHdr==NULL) { //first file
 		mHdr=sam_hdr_dup(r->header());
-		sam_hdr_add_pg(mHdr, "TieBrush",
-				"VN", pg_ver, "CL", pg_args.chars());
+		int ret = sam_hdr_add_pg(mHdr, "TieBrush",
+				"VN", pg_ver, "CL", pg_args.chars(),NULL);
+        sam_hdr_rebuild(mHdr);
 		//int numrefs=sam_hdr_nref(mHdr);
 		//GMessage("Error: file %s has %d reference sequences.\n", r->fileName(), numrefs);
 	}
