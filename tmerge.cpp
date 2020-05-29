@@ -25,9 +25,8 @@ void TInputFiles::addSam(GSamReader* r) {
 	if (mHdr==NULL) { //first file
 		mHdr=sam_hdr_dup(r->header());
 		sam_hdr_add_pg(mHdr, "TieBrush",
-				"VN", pg_ver, "CL", pg_args.chars());
-		//int numrefs=sam_hdr_nref(mHdr);
-		//GMessage("Error: file %s has %d reference sequences.\n", r->fileName(), numrefs);
+				"VN", pg_ver, "CL", pg_args.chars(), NULL);
+		// sam_hdr_rebuild(mHdr); -- is this really needed?
 	}
 	else { //check if this file has the same SQ entries in the same order
 		//if it has more seqs, make it the main header
