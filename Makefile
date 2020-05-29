@@ -131,6 +131,7 @@ ifdef DEBUG_BUILD
 endif
 
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o ./tmerge.o
+COVOBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o
 
 #OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
 # ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
@@ -149,9 +150,9 @@ endif
 
 # OBJS += rlink.o tablemaker.o tmerge.o
 
-all release static debug: tiebrush${EXE}
-memcheck memdebug tsan tcheck thrcheck: tiebrush${EXE}
-memuse memusage memtrace: tiebrush${EXE}
+all release static debug: tiebrush tiecov
+memcheck memdebug tsan tcheck thrcheck: tiebrush tiecov
+memuse memusage memtrace: tiebrush tiecov
 #nothreads: tiebrush${EXE}
 
 GSam.o : GSam.h
@@ -163,15 +164,20 @@ tiebrush: $(OBJS) tiebrush.o
 	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 	@echo
 	${DBG_WARN}
-test demo tests: tiebrush${EXE}
-	@./run_tests.sh
+tiecov: $(COVOBJS) tiecov.o
+	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
+	@echo
+	${DBG_WARN}
+
+#test demo tests: tiebrush
+#	@./run_tests.sh
 .PHONY : clean cleanall cleanAll allclean
 
 # target for removing all object files
 
 #	echo $(PATH)
 clean:
-	${RM} tiebrush${EXE} tiebrush.o* $(OBJS)
+	${RM} tiebrush${EXE} tiecov tiecov.o* tiebrush.o* $(OBJS)
 	${RM} core.*
 allclean cleanAll cleanall:
 	cd ${BAM} && make clean
