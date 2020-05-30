@@ -253,7 +253,7 @@ int main(int argc, char *argv[])  {
 				b_start=b->core.pos;
 				b_end=endpos;
 				bcov.setCount(0);
-				bcov.setCount(b_end-b_start+1, (int)0);
+				bcov.setCount(b_end-b_start+1);
 				prev_tid=b->core.tid;
 			} else { //extending current bundle
 				if (b_end<endpos) {

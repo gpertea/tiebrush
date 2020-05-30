@@ -29,7 +29,7 @@ class GSamRecord: public GSeg {
 
    union {
 	  uint16_t iflags;
-      struct {
+	struct {
     	  bool novel         :1; //if set, the destructor must free b
     	  bool hard_Clipped  :1;
     	  bool soft_Clipped  :1;
