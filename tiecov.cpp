@@ -52,27 +52,6 @@ void addCov(bam1_t *in_rec, int dupCount, GVec<uint16_t>& bcov, int b_start) {
     }
 }
 
-
-int getYC(bam1_t *in_rec){
-    uint8_t* ptr_yc_1=bam_aux_get(in_rec,"YC");
-    if(ptr_yc_1){
-        return bam_aux2i(ptr_yc_1);
-    }
-    else{
-        return 1;
-    }
-}
-
-int getNH(bam1_t *in_rec){
-    uint8_t* ptr_nh_1=bam_aux_get(in_rec,"NH");
-    if(ptr_nh_1){
-        return bam_aux2i(ptr_nh_1);
-    }
-    else{
-        return -1;
-    }
-}
-
 void flushCoverage(sam_hdr_t* hdr, GVec<uint16_t>& bcov,  int tid, int b_start) {
   if (tid<0 || b_start<0) return;
   int i=0;
