@@ -4,7 +4,7 @@ GDIR := ../gclib
 PKGPATH := $(if $(XLIB),export PKG_CONFIG_PATH=$(XLIB)/pkgconfig,true)
 HTSLIBS := $(shell ${PKGPATH}; pkg-config --libs --static htslib)
 ifeq ($(HTSLIBS),)
- $(error ERROR: htslib installation not found. Please install htslib first)
+ $(error ERROR: htslib not found. Please install htslib first)
 endif
 
 HTSINC := $(shell ${PKGPATH}; pkg-config --cflags htslib)
