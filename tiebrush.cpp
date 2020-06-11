@@ -3,7 +3,7 @@
 #include "tmerge.h"
 #include "GBitVec.h"
 
-#define VERSION "0.0.1"
+#define VERSION "0.0.2"
 
 const char* USAGE="TieBrush v" VERSION " usage:\n"
 " tiebrush [-o <outfile>.bam] list.txt | in1.bam in2.bam ...\n"
@@ -30,6 +30,151 @@ uint64_t outCounter=0;
 
 bool debugMode=false;
 bool verbose=false;
+
+struct GSegNode {
+	GSeg seg;
+	GSegNode* next;
+	inline uint start() { return seg.start; }
+	inline uint end() { return seg.end; }
+	GSegNode(uint segstart=0, uint segend=0, GSegNode* nnext=NULL):seg(segstart, segend),
+			next(nnext) {}
+	GSegNode(GSeg& exon, GSegNode* nnext=NULL):seg(exon),
+			next(nnext) {}
+};
+
+struct GSegList { //per sample per strand
+  GSegNode* startNode;
+  uint last_pos;
+  int last_dist;
+  GSegList():startNode(NULL),last_pos(0),last_dist(-1) {
+	  //a new list always has (0,0) interval
+	  startNode=new GSegNode();
+  }
+  ~GSegList() {
+	  clear();
+  }
+  void reset() {
+	  clear();
+	  last_pos=0;
+	  last_dist=-1;
+	  startNode=new GSegNode();
+  }
+  void clear() { //delete everything except start record
+	  GSegNode* p=startNode;
+	  GSegNode* next;
+	  while (p) {
+		  next=p->next;
+		  delete p;
+		  p=next;
+	  }
+  }
+
+  void clearTo(GSegNode* to) {
+	  GSegNode* p=startNode;
+	  GSegNode* next;
+	  while (p && p!=to) {
+		  next=p->next;
+		  delete p;
+		  p=next;
+	  }
+	  if (p==NULL) GError("Error: clearTo did not find node %d-%d!\n",
+			  to->start(), to->end());
+	  startNode=to;
+  }
+
+ void mergeRead(GSamRecord& r) {
+	 //simple case when only start(0,0) is there
+	 if (startNode->next==NULL) {
+		 GSegNode* prev=startNode;
+		 for (int i=0;i<r.exons.Count();i++){
+			 GSegNode* n=new GSegNode(r.exons[i]);
+			 prev->next=n;
+			 prev=n;
+		 }
+		 return;
+	 }
+	 GSegNode *n=startNode->next; //never check 0,0
+	 GSegNode *prev=startNode;
+	 for (int i=0;i<r.exons.Count();i++) {
+		 GSeg& e=r.exons[i];
+		 while (n) {
+            if (e.end < n->start()) {
+              //exon should be inserted before n
+              GSegNode* nw=new GSegNode(e, n);
+              prev->next=nw;
+              prev=nw; //n is unchanged
+              break; //check next exon against n
+            }
+            // e.end >= node start
+            if (e.start <= n->end()) { //overlap!
+              //union should replace/change n
+              if (e.start<n->start()) n->seg.start=e.start;
+              if (e.end>n->end()) n->seg.end=e.end;
+              //we have to check if next nodes are now overlapped as well
+              GSegNode* next=n->next;
+              while (next && next->start()<=n->end()) {
+            	  //overlap, swallow this next node
+            	  uint nend=next->end();
+            	  n->next=next->next;
+            	  delete next;
+            	  next=n->next;
+                  if (nend>n->end()) {
+                	n->seg.end=nend;
+                	break; //there cannot be overlap with next node
+                  }
+              } //while overlap with next nodes
+              break; //check next exon against this extended n
+            }
+            // e.start > node end
+            prev=n;
+            n=n->next;
+		 }
+	 }
+ }
+ int processRead(GSamRecord& r) { //get gap distance for alignment and merge it
+	 //this should only be called ONCE per collapsed read and sample
+	 if (last_pos==r.start) { //called on the same sample and start position
+	     mergeRead(r);
+		 return last_dist;
+	 }
+	 int d=0;
+	 GSegNode* node=startNode;
+	 GSegNode* prev=startNode;
+	 while (node && node->start()< r.start) {
+		 if (node->end()<r.start) { //node ends before r
+			 d=r.start-node->end()-1;
+		 } else //overlap
+			 d=0;
+		 prev=node;
+		 node=node->next;
+	 }
+     if (prev!=startNode) {
+    	 clearTo(prev);
+     }
+     mergeRead(r);
+	 return d;
+ }
+
+};
+
+
+struct RDistanceData {
+  GVec<GSegList> fsegs; //forward strand segs for each sample
+  GVec<GSegList> rsegs; //reverse strand segs for each sample
+  void init(int num_samples) {
+	  fsegs.Resize(num_samples);
+	  rsegs.Resize(num_samples);
+	  this->reset();
+  }
+  void reset() {
+	  for (int i=0;i<fsegs.Count();i++) {
+           fsegs[i].reset();
+           rsegs[i].reset();
+	  }
+  }
+};
+
+RDistanceData rspacing;
 
 int cmpFull(GSamRecord& a, GSamRecord& b) {
 	//-- CIGAR && MD strings
@@ -87,18 +232,19 @@ int cmpExons(GSamRecord& a, GSamRecord& b) {
 
 //keep track of all SAM alignments starting at the same coordinate
 // that were merged into a single alignment
-class SPData {
+class SPData { // Same Point data
     bool settled; //real SP data, owns its r data and deallocates it on destroy
   public:
 	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
 	int64_t accYX; //if any merged records had YX tag, their values are accumulated here
+	int64_t vYD; // min distance from previous read across samples (spacing distance)
 	GBitVec* samples; //which samples were the collapsed ones coming from
 	                 //number of bits set will be stored as YX:i:(samples.count()+accYX)
 	int dupCount; //duplicity count - how many single-alignments were merged into r
 	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
 	char tstrand; //'-','+' or '.'
-    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), samples(NULL),
+    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), vYD(-1),samples(NULL),
     		dupCount(0), r(rec), tstrand('.') {
     	if (r!=NULL) tstrand=r->spliceStrand();
     }
@@ -118,10 +264,12 @@ class SPData {
     		GSamRecord* rdup=new GSamRecord(*r);
     		r=rdup;
     	}
-    	if (samples==NULL) samples=new GBitVec(inRecords.readers.Count());
+    	if (samples==NULL)
+    		samples=new GBitVec(inRecords.readers.Count());
     	accYC=r->tag_int("YC");
     	if (accYC==0) ++dupCount;
     	accYX=r->tag_int("YX");
+    	vYD=r->tag_int("YD", -1);
     	if (accYX==0 && sampleIdx>=0) samples->set(sampleIdx);
     }
 
@@ -134,6 +282,8 @@ class SPData {
     	int64_t rYX=rec->tag_int("YX");
     	if (rYX) accYX+=rYX;
     	   else if (sampleIdx>=0) samples->set(sampleIdx);
+    	int64_t minYD=rec->tag_int("YD",-1);
+    	if (minYD>=0) vYD=minYD;
     }
 
     bool operator<(const SPData& b) {
@@ -201,56 +351,82 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	  SPData& spd=*(spdlst.Get(i));
 	  int64_t accYC=spd.accYC+spd.dupCount;
 	  int64_t accYX=spd.accYX;
-	  if (spd.dupCount>1) { //just to save an unnecessary GBitVec::count() call?
-	   accYX+=spd.samples->count();
-	  }
+	  int mrgSamples=spd.samples->count();
+	  //if (spd.dupCount>1) { //just to save an unnecessary GBitVec::count() call?
+	   accYX+=mrgSamples;
+	  //
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
 	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
+	  if (spd.vYD>0 || spd.vYD==-1) {
+		int dmin=(spd.vYD>0) ? spd.vYD : MAX_INT;
+	    for(int s=spd.samples->find_first();s>=0;
+	    		s=spd.samples->find_next(s)) {
+	    	if (spd.tstrand=='+' || spd.tstrand=='.') {
+	    	   int r=rspacing.fsegs[s].processRead(*spd.r);
+	    	   if (r<dmin) dmin=r;
+	    	   if (dmin==0) break;
+	    	}
+	    	if (spd.tstrand=='-' || spd.tstrand=='.') {
+	    	   int r=rspacing.rsegs[s].processRead(*spd.r);
+	    	   if (r<dmin) dmin=r;
+	    	   if (dmin==0) break;
+	    	}
+	    } //for each bit index/sample
+	    spd.vYD=dmin;
+	  } //if we needed to find min dist
+	  if (spd.vYD<0) GError("Error: YD tag not set!\n");
+	  spd.r->add_int_tag("YD", spd.vYD);
 	  outfile->write(spd.r);
 	  outCounter++;
   }
   spdlst.Clear();
 }
 
+
+
 // >------------------ main() start -----
 int main(int argc, char *argv[])  {
 	inRecords.setup(VERSION, argc, argv);
 	processOptions(argc, argv);
-	inRecords.start();
+	int numSamples=inRecords.start();
 	if (outfname.is_empty()) outfname="-";
 	GSamFileType oftype=(outfname=="-") ?
 			GSamFile_SAM : GSamFile_BAM;
 	outfile=new GSamWriter(outfname, inRecords.header(), oftype);
-
-	 TInputRecord* irec=NULL;
-	 GSamRecord* brec=NULL;
-	 GList<SPData> spdata(true, true, true); //list of Same Position data, with all possibly merged records
-	 //bool newChr=false;
-	 int prev_pos=-1;
-	 int prev_tid=-1;
-	 while ((irec=inRecords.next())!=NULL) {
+	rspacing.init(numSamples);
+	TInputRecord* irec=NULL;
+	GSamRecord* brec=NULL;
+	GList<SPData> spdata(true, true, true); //list of Same Position data, with all possibly merged records
+	bool newChr=false;
+	int prev_pos=-1;
+	int prev_tid=-1;
+	while ((irec=inRecords.next())!=NULL) {
 		 brec=irec->brec;
 		 if (brec->isUnmapped()) continue;
 		 inCounter++;
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
 		 if (tid!=prev_tid) {
+			 if (prev_tid!=-1) newChr=true;
 			 prev_tid=tid;
-			 //newChr=true;
 			 prev_pos=-1;
 		 }
 		 if (pos!=prev_pos) { //new position
-			 flushPData(spdata);
+			 flushPData(spdata); //also adds read data to rspacing
 			 prev_pos=pos;
 		 }
+		 if (newChr) {
+			 rspacing.reset();
+			 newChr=false;
+		 }
 		 addPData(*irec, spdata);
-	 }
+	}
     flushPData(spdata);
 	delete outfile;
 	inRecords.stop();
     //if (verbose) {
-    	double p=100.00 - (double)(outCounter*100.00)/(double)inCounter;
-    	GMessage("%ld input records written as %ld (%.2f%% reduction)\n", inCounter, outCounter, p);
+    double p=100.00 - (double)(outCounter*100.00)/(double)inCounter;
+    GMessage("%ld input records written as %ld (%.2f%% reduction)\n", inCounter, outCounter, p);
     //}
 }
 // <------------------ main() end -----

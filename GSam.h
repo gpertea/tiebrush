@@ -197,11 +197,9 @@ class GSamRecord: public GSeg {
  inline uint8_t mapq() { return b->core.qual; }
  //int find_tag(const char tag[2], uint8_t* & s, char& tag_type);
  uint8_t* find_tag(const char tag[2]);
- //position s at the beginning of tag data, tag_type is set to the found tag type
- //returns length of tag data, or 0 if tag not found
 
  char* tag_str(const char tag[2]); //return tag value for tag type 'Z'
- int64_t tag_int(const char tag[2]); //return numeric value of tag (for numeric types)
+ int64_t tag_int(const char tag[2], int nfval=0); //return numeric value of tag (for numeric types)
  double tag_float(const char tag[2]); //return float value of tag (for float types)
  char tag_char(const char tag[2]); //return char value of tag (for type 'A')
  char tag_char1(const char tag[2]);
