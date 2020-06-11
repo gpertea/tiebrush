@@ -130,8 +130,8 @@ ifdef DEBUG_BUILD
   DBG_WARN+='WARNING: built DEBUG version, use "make clean release" for a faster version of the program.'
 endif
 
-OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o ./tmerge.o
-COVOBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o
+OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./tmerge.o ./GSam.o
+COVOBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o
 
 #OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
 # ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
@@ -157,6 +157,7 @@ memuse memusage memtrace: tiebrush tiecov
 
 GSam.o : GSam.h
 tiebrush.o : GSam.h tmerge.h
+tiecov.o : GSam.h
 tmerge.o : tmerge.h
 #${BAM}/libhts.a: 
 #	cd ${BAM} && make lib

@@ -1,7 +1,7 @@
 #include "GArgs.h"
 #include "GStr.h"
 #include "GVec.hh"
-#include "htslib/sam.h"
+#include "GSam.h"
 
 #define VERSION "0.0.3"
 
@@ -91,45 +91,43 @@ void flushCoverage(sam_hdr_t* hdr, GVec<uint16_t>& bcov,  int tid, int b_start) 
 // >------------------ main() start -----
 int main(int argc, char *argv[])  {
 	processOptions(argc, argv);
-    htsFile* hts_file=hts_open(infname.chars(), "r");
-    if (hts_file==NULL)
-       GError("Error: could not open alignment file %s \n",infname.chars());
-    sam_hdr_t* hdr = sam_hdr_read(hts_file);
-    int prev_tid=-1;
-    bam1_t* b = bam_init1();
+    //htsFile* hts_file=hts_open(infname.chars(), "r");
+    //if (hts_file==NULL)
+    //   GError("Error: could not open alignment file %s \n",infname.chars());
+	GSamReader samreader(infname.chars(), SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
     if (outfname.is_empty() || outfname=="-") outf=stdout;
     else {
     	    outf=fopen(outfname.chars(), "w");
     	    if (outf==NULL) GError("Error creating file %s\n", outfname.chars());
     }
+    int prev_tid=-1;
     GVec<uint16_t> bcov(4096*1024);
     int b_end=-1; //bundle end, start
     int b_start=-1;
-	    while (sam_read1(hts_file, hdr, b) >= 0) {
-		    int nh = getNH(b);
+    GSamRecord* brec=NULL;
+	    while ((brec=samreader.next())!=NULL) {
+		    int nh = brec->tag_int("NH");
 		    if(nh>filters.max_nh) { continue; }
-		    if (b->core.qual<filters.min_qual) { continue; }
-		    int endpos=bam_endpos(b);
-		    if (b->core.tid!=prev_tid || b->core.pos>b_end) {
-			    flushCoverage(hdr, bcov, prev_tid, b_start);
-			    b_start=b->core.pos;
+		    if (brec->mapq()<filters.min_qual) { continue; }
+		    int endpos=brec->end;
+		    if (brec->refId()!=prev_tid || (int)brec->start>b_end) {
+			    flushCoverage(samreader.header() , bcov, prev_tid, b_start);
+			    b_start=brec->start;
 			    b_end=endpos;
 			    bcov.setCount(0);
 			    bcov.setCount(b_end-b_start+1);
-			    prev_tid=b->core.tid;
+			    prev_tid=brec->refId();
 		    } else { //extending current bundle
 			    if (b_end<endpos) {
 				    b_end=endpos;
 				    bcov.setCount(b_end-b_start+1, (int)0);
 			    }
 		    }
-		    int accYC = getYC(b);
-		    addCov(b, accYC, bcov, b_start);
+		    int accYC = brec->tag_int("YC");
+		    addCov(brec->get_b(), accYC, bcov, b_start);
 	    }
-    flushCoverage(hdr, bcov, prev_tid, b_start);
+    flushCoverage(samreader.header(), bcov, prev_tid, b_start);
     if (outf!=stdout) fclose(outf);
-    bam_destroy1(b);
-    sam_hdr_destroy(hdr);
 }// <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {

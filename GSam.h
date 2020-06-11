@@ -186,15 +186,15 @@ class GSamRecord: public GSeg {
    return (b_hdr!=NULL) ?
          ((b->core.tid<0) ? "*" : b_hdr->target_name[b->core.tid]) : NULL;
    }
- int32_t refId() { return b->core.tid; }
- int32_t mate_refId() { return b->core.mtid; }
+ inline int32_t refId() { return b->core.tid; }
+ inline int32_t mate_refId() { return b->core.mtid; }
  const char* mate_refName() {
     return (b_hdr!=NULL) ?
        ((b->core.mtid<0) ? "*" : b_hdr->target_name[b->core.mtid]) : NULL;
     }
- int32_t insertSize() { return b->core.isize; }
- int32_t mate_start() { return b->core.mpos<0? 0 : b->core.mpos+1; }
-
+ inline int32_t insertSize() { return b->core.isize; }
+ inline int32_t mate_start() { return b->core.mpos<0? 0 : b->core.mpos+1; }
+ inline uint8_t mapq() { return b->core.qual; }
  //int find_tag(const char tag[2], uint8_t* & s, char& tag_type);
  uint8_t* find_tag(const char tag[2]);
  //position s at the beginning of tag data, tag_type is set to the found tag type
