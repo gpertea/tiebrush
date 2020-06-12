@@ -13,3 +13,6 @@ The initial goal is to generate this composite BAM file which multiplexes read a
 
 If either of these tags are missing (i.e. GBamRecord::__tag_int__() call returns 0) then the alignment is unique (when YC is 0) or only one sample has it (if YX is 0). The actual count in these cases is obviously 1. 
 
+In an attempt to reflect a measure of "mosaicity" for read alignments in a sample, the following tag is also added for each read:
+
+* __YD__:i:nn : nn = minimum spacing preceding the read alignment in the samles(s) that it belongs to
