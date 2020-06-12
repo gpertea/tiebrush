@@ -84,8 +84,9 @@ void flushJuncs(FILE* f, const char* chr) {
 
 void processOptions(int argc, char* argv[]);
 
-void addCov(bam1_t *in_rec, int dupCount, GVec<uint16_t>& bcov, int b_start) {
-    int pos=in_rec->core.pos; // 0-based
+void addCov(GSamRecord& r, int dupCount, GVec<uint16_t>& bcov, int b_start) {
+	bam1_t* in_rec=r.get_b();
+    int pos=r.start; // 1-based
     for (uint8_t c=0;c<in_rec->core.n_cigar;++c){
         uint32_t *cigar_full=bam_get_cigar(in_rec);
         int opcode=bam_cigar_op(cigar_full[c]);
@@ -153,13 +154,13 @@ int main(int argc, char *argv[])  {
     }
     int prev_tid=-1;
     GVec<uint16_t> bcov(4096*1024);
-    int b_end=-1; //bundle end, start
-    int b_start=-1;
+    int b_end=0; //bundle start, end (1-based)
+    int b_start=0; //1 based
     GSamRecord* brec=NULL;
 	while ((brec=samreader.next())!=NULL) {
 		    int nh = brec->tag_int("NH");
-		    if(nh>filters.max_nh) { continue; }
-		    if (brec->mapq()<filters.min_qual) { continue; }
+		    if(nh>filters.max_nh) { delete brec; continue; }
+		    if (brec->mapq()<filters.min_qual) { delete brec; continue; }
 		    int endpos=brec->end;
 		    if (brec->refId()!=prev_tid || (int)brec->start>b_end) {
 		    	if (coutf)
@@ -181,11 +182,12 @@ int main(int argc, char *argv[])  {
 		    }
 		    int accYC = brec->tag_int("YC", 1);
 		    if (coutf)
-		       addCov(brec->get_b(), accYC, bcov, b_start);
+		       addCov(*brec, accYC, bcov, b_start);
 		    if (joutf && brec->exons.Count()>1) {
 		    	addJunction(*brec, accYC);
 		    }
-	    }
+		    delete brec;
+	} //while GSamRecord emitted
 	if (coutf) {
        flushCoverage(samreader.header(), bcov, prev_tid, b_start);
        if (coutf!=stdout) fclose(coutf);
