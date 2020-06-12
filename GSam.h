@@ -266,6 +266,11 @@ class GSamReader {
       return fname;
    }
 
+   const char* refName(int tid) {
+	   if (!hts_file) return NULL;
+	   return hdr->target_name[tid];
+   }
+
    void bclose() {
       if (hts_file) {
    	    if (hdr!=NULL) sam_hdr_destroy(hdr);

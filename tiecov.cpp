@@ -6,20 +6,81 @@
 #define VERSION "0.0.3"
 
 const char* USAGE="TieCov v" VERSION " usage:\n"
-                  " tiecov [-o out.bedgraph] in.bam\n"
-                  " Other options: \n"
-                  "  -N   : maximum NH score (if available) to include when reporting coverage\n"
-                  "  -Q   : minimum mapping quality to include when reporting coverage\n";
+" tiecov [-b out.flt.bam] [-c out.bedgraph] [-j out.junctions.bed] in.bam\n"
+" Other options: \n"
+"  -N   : maximum NH score (if available) to include when reporting coverage\n"
+"  -Q   : minimum mapping quality to include when reporting coverage\n";
 
 struct Filters{
     int max_nh = MAX_INT;
     int min_qual = -1;
 } filters;
 
-GStr outfname, infname;
-FILE* outf=NULL;
+GStr covfname, jfname, bfname, infname;
+FILE* boutf=NULL;
+FILE* coutf=NULL;
+FILE* joutf=NULL;
+
 bool debugMode=false;
 bool verbose=false;
+int juncCount=0;
+
+struct CJunc {
+	int start, end;
+	char strand;
+	uint16_t dupcount;
+	uint16_t ovh_start, ovh_end;
+	CJunc(int vs=0, int ve=0, char vstrand='+', uint16_t dcount=1, uint16_t ovhs=0, uint16_t ovhe=0):
+	start(vs), end(ve), strand(vstrand), dupcount(dcount),ovh_start(ovhs), ovh_end(ovhe) {
+		if (vs) dupcount=1;
+	}
+	bool operator==(const CJunc& a) {
+		return (strand==a.strand && start==a.start && end==a.end);
+	}
+	bool operator<(const CJunc& a) {
+		if (start==a.start) return (end<a.end);
+		else return (start<a.start);
+	}
+
+	void add(CJunc& j) {
+       dupcount+=j.dupcount;
+       if (j.ovh_start>ovh_start) ovh_start=j.ovh_start;
+       if (j.ovh_end>ovh_end) ovh_end=j.ovh_end;
+	}
+
+	void write(FILE* f, const char* chr) {
+		int fstart=start-ovh_start;
+		int fend=end+ovh_end;
+		juncCount++;
+		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\t%d\t%d\t255,0,0,\t2\t%d,%d\t0,%d\n",
+				chr, fstart, fend, juncCount, dupcount, strand, fstart, fend,
+				ovh_start, ovh_end, fend-ovh_end);
+	}
+};
+
+GArray<CJunc> junctions(128, true);
+
+void addJunction(GSamRecord& r, int dupcount) {
+	char strand = r.spliceStrand();
+	if (strand!='+' && strand!='-') return;
+	for (int i=1;i<r.exons.Count();i++) {
+		CJunc j(r.exons[i-1].end+1, r.exons[i].start-1, strand,
+				dupcount, r.exons[i-1].len(), r.exons[i].len());
+		int ei;
+		int r=junctions.AddIfNew(j, &ei);
+		if (r==-1) {//existing junction, update
+			junctions[ei].add(j);
+		}
+	}
+}
+
+void flushJuncs(FILE* f, const char* chr) {
+    for (int i=0;i<junctions.Count();i++) {
+    	junctions[i].write(f,chr);
+    }
+    junctions.Clear();
+    junctions.setCapacity(128);
+}
 
 void processOptions(int argc, char* argv[]);
 
@@ -62,7 +123,7 @@ void flushCoverage(sam_hdr_t* hdr, GVec<uint16_t>& bcov,  int tid, int b_start) 
     	 j++;
      }
      if (icov!=0)
-       fprintf(outf, "%s\t%d\t%d\t%d\n", hdr->target_name[tid], b_start+i, b_start+j, icov);
+       fprintf(coutf, "%s\t%d\t%d\t%d\n", hdr->target_name[tid], b_start+i, b_start+j, icov);
      i=j;
   }
 }
@@ -74,27 +135,43 @@ int main(int argc, char *argv[])  {
     //if (hts_file==NULL)
     //   GError("Error: could not open alignment file %s \n",infname.chars());
 	GSamReader samreader(infname.chars(), SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
-    if (outfname.is_empty() || outfname=="-") outf=stdout;
-    else {
-    	    outf=fopen(outfname.chars(), "w");
-    	    if (outf==NULL) GError("Error creating file %s\n", outfname.chars());
+    if (!covfname.is_empty()) {
+       if (covfname=="-" || covfname=="stdout")
+    	   coutf=stdout;
+       else {
+          coutf=fopen(covfname.chars(), "w");
+          if (coutf==NULL) GError("Error creating file %s\n",
+        		  covfname.chars());
+          fprintf(coutf, "track type=bedGraph\n");
+       }
+    }
+    if (!jfname.is_empty()) {
+       joutf=fopen(jfname.chars(), "w");
+       if (joutf==NULL) GError("Error creating file %s\n",
+        		  jfname.chars());
+       fprintf(joutf, "track name=junctions\n");
     }
     int prev_tid=-1;
     GVec<uint16_t> bcov(4096*1024);
     int b_end=-1; //bundle end, start
     int b_start=-1;
     GSamRecord* brec=NULL;
-	    while ((brec=samreader.next())!=NULL) {
+	while ((brec=samreader.next())!=NULL) {
 		    int nh = brec->tag_int("NH");
 		    if(nh>filters.max_nh) { continue; }
 		    if (brec->mapq()<filters.min_qual) { continue; }
 		    int endpos=brec->end;
 		    if (brec->refId()!=prev_tid || (int)brec->start>b_end) {
-			    flushCoverage(samreader.header() , bcov, prev_tid, b_start);
+		    	if (coutf)
+			       flushCoverage(samreader.header() , bcov, prev_tid, b_start);
+			    if (joutf)
+			       flushJuncs(joutf, samreader.refName(prev_tid));
 			    b_start=brec->start;
 			    b_end=endpos;
-			    bcov.setCount(0);
-			    bcov.setCount(b_end-b_start+1);
+			    if (coutf) {
+			      bcov.setCount(0);
+			      bcov.setCount(b_end-b_start+1);
+			    }
 			    prev_tid=brec->refId();
 		    } else { //extending current bundle
 			    if (b_end<endpos) {
@@ -102,15 +179,26 @@ int main(int argc, char *argv[])  {
 				    bcov.setCount(b_end-b_start+1, (int)0);
 			    }
 		    }
-		    int accYC = brec->tag_int("YC");
-		    addCov(brec->get_b(), accYC, bcov, b_start);
+		    int accYC = brec->tag_int("YC", 1);
+		    if (coutf)
+		       addCov(brec->get_b(), accYC, bcov, b_start);
+		    if (joutf && brec->exons.Count()>1) {
+		    	addJunction(*brec, accYC);
+		    }
 	    }
-    flushCoverage(samreader.header(), bcov, prev_tid, b_start);
-    if (outf!=stdout) fclose(outf);
+	if (coutf) {
+       flushCoverage(samreader.header(), bcov, prev_tid, b_start);
+       if (coutf!=stdout) fclose(coutf);
+	}
+	if (joutf) {
+		flushJuncs(joutf, samreader.refName(prev_tid));
+		fclose(joutf);
+	}
+
 }// <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-    GArgs args(argc, argv, "help;debug;verbose;version;DVho:N:Q:");
+    GArgs args(argc, argv, "help;debug;verbose;version;DVhc:j:b:N:Q:");
     args.printError(USAGE, true);
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
         GMessage(USAGE);
@@ -143,7 +231,9 @@ void processOptions(int argc, char* argv[]) {
         fprintf(stderr, "Running TieCov " VERSION ". Command line:\n");
         args.printCmdLine(stderr);
     }
-    outfname=args.getOpt('o');
-    if (args.startNonOpt()==0) GError("Error: no alignment file given!\n");
+    covfname=args.getOpt('c');
+    jfname=args.getOpt('j');
+    bfname=args.getOpt('b');
+    if (args.startNonOpt()!=1) GError("Error: no alignment file given!\n");
     infname=args.nextNonOpt();
 }
