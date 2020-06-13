@@ -19,7 +19,7 @@ enum GSamFileType {
 class GSamRecord: public GSeg {
    friend class GSamReader;
    friend class GSamWriter;
-   bam1_t* b;
+   bam1_t* b=NULL;
    // b->data has the following strings concatenated:
    //  qname (including the terminal \0)
    //  +cigar (each event encoded on 32 bits)
@@ -28,7 +28,7 @@ class GSamRecord: public GSeg {
    //     +aux
 
    union {
-	  uint16_t iflags;
+	  uint16_t iflags=0;
 	struct {
     	  bool novel         :1; //if set, the destructor must free b
     	  bool hard_Clipped  :1;
@@ -36,24 +36,23 @@ class GSamRecord: public GSeg {
     	  bool has_Introns   :1;
       };
    };
-   sam_hdr_t* b_hdr;
+   sam_hdr_t* b_hdr=NULL;
  public:
    GVec<GSeg> exons; //coordinates will be 1-based
-   int clipL; //soft clipping data, as seen in the CIGAR string
-   int clipR;
-   int mapped_len; //sum of exon lengths
+   int clipL=0; //soft clipping data, as seen in the CIGAR string
+   int clipR=0;
+   int mapped_len=0; //sum of exon lengths
    //FIXME: DEBUG only fields
-   char* _cigar;
-   const char* _read;
+   char* _cigar=NULL;
+   const char* _read=NULL;
    // -- DEBUG only fields
    bool isHardClipped() { return hard_Clipped; }
    bool isSoftClipped() { return soft_Clipped; }
    bool hasIntrons() { return has_Introns; }
    //created from a reader:
    void bfree_on_delete(bool b_free=true) { novel=b_free; }
-   GSamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):b(NULL),
-		   iflags(0), b_hdr(b_header), exons(1),  clipL(0), clipR(0), mapped_len(0),
-		   _cigar(NULL), _read(NULL) {
+   GSamRecord() { }
+   GSamRecord(bam1_t* from_b, sam_hdr_t* b_header=NULL, bool b_free=true):b_hdr(b_header) {
       if (from_b==NULL) {
            b=bam_init1();
            novel=true;
@@ -63,10 +62,18 @@ class GSamRecord: public GSeg {
            novel=b_free;
            _cigar=cigar();
            _read=name();
+           setupCoordinates();//set 1-based coordinates (start, end and exons array)
       }
+   }
 
-      b_hdr=b_header;
-      setupCoordinates();//set 1-based coordinates (start, end and exons array)
+   void init(bam1_t* from_b, sam_hdr_t* b_header=NULL, bool adopt_b=false) {
+	   clear();
+	   novel=adopt_b;
+	   b=from_b;
+       _cigar=cigar();
+       _read=name();
+	   b_hdr=b_header;
+	   setupCoordinates();
    }
 
    //deep copy constructor:
@@ -80,8 +87,8 @@ class GSamRecord: public GSeg {
    }
 
    const GSamRecord& operator=(GSamRecord& r) {
-	  //copy operator
-      //makes a new copy of the bam1_t record etc.
+      //copy operator
+      //makes a new copy of the bam1_t struct etc.
       clear();
       b=bam_dup1(r.b);
       iflags=r.iflags;
@@ -95,7 +102,7 @@ class GSamRecord: public GSeg {
       _cigar=Gstrdup(r._cigar);
       _read=r._read;
       return *this;
-      }
+   }
 
      void setupCoordinates();
 
@@ -206,7 +213,7 @@ class GSamRecord: public GSeg {
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag
  char* sequence(); //user should free after use
  char* qualities();//user should free after use
- char* cigar(); //returns text version of the CIGAR string; user must free
+ char* cigar(); //returns text version of the CIGAR string; user must deallocate
 };
 
 // from sam.c:
@@ -217,6 +224,7 @@ class GSamReader {
    htsFile* hts_file;
    char* fname;
    sam_hdr_t* hdr;
+   bam1_t* b_next; //for light next(GBamRecord& b)
  public:
    void bopen(const char* filename, int32_t required_fields,
 		   const char* cram_refseq=NULL) {
@@ -251,11 +259,12 @@ class GSamReader {
    }
 
    GSamReader(const char* fn, int32_t required_fields,
-		   const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL) {
+		   const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL), b_next(NULL) {
       bopen(fn, required_fields, cram_ref);
    }
 
-   GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL) {
+   GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL),
+		   hdr(NULL), b_next(NULL) {
       bopen(fn, cram_ref);
    }
 
@@ -281,9 +290,10 @@ class GSamReader {
     }
 
    ~GSamReader() {
+      if (b_next) bam_destroy1(b_next);
       bclose();
       GFREE(fname);
-    }
+   }
    /*
    int64_t fpos() { //ftell
      if (hts_file->is_bgzf) { // bam_ptell() from sam.c
@@ -350,19 +360,29 @@ class GSamReader {
      GFREE(ifname);
   }
 
-  GSamRecord* next() {
+   //the caller has to FREE the created GSamRecord
+   GSamRecord* next() {
       if (hts_file==NULL)
         GError("Warning: GSamReader::next() called with no open file.\n");
       bam1_t* b = bam_init1();
       if (sam_read1(hts_file, hdr, b) >= 0) {
         GSamRecord* bamrec=new GSamRecord(b, hdr, true);
         return bamrec;
-        }
-      else {
-        bam_destroy1(b);
-        return NULL;
-        }
       }
+      bam_destroy1(b);
+      return NULL;
+   }
+
+   bool next(GSamRecord& rec) {
+       if (hts_file==NULL)
+	        GError("Warning: GSamReader::next() called with no open file.\n");
+	   if (b_next==NULL) b_next=bam_init1();
+       if (sam_read1(hts_file, hdr, b_next) >= 0) {
+	        rec.init(b_next, hdr, false);
+	        return true;
+	   }
+       return false;
+   }
 };
 
 //basic BAM/SAM/CRAM writer class

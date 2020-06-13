@@ -54,7 +54,7 @@ struct CJunc {
 		juncCount++;
 		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\t%d\t%d\t255,0,0,\t2\t%d,%d\t0,%d\n",
 				chr, fstart, fend, juncCount, dupcount, strand, fstart, fend,
-				ovh_start, ovh_end, fend-ovh_end);
+				ovh_start, ovh_end, end-start+ovh_start);
 	}
 };
 
@@ -84,9 +84,12 @@ void flushJuncs(FILE* f, const char* chr) {
 
 void processOptions(int argc, char* argv[]);
 
+
+//b_start MUST be passed 1-based
 void addCov(GSamRecord& r, int dupCount, GVec<uint16_t>& bcov, int b_start) {
 	bam1_t* in_rec=r.get_b();
-    int pos=r.start; // 1-based
+    int pos=in_rec->core.pos; // 0-based
+    b_start--; //to make it 0-based
     for (uint8_t c=0;c<in_rec->core.n_cigar;++c){
         uint32_t *cigar_full=bam_get_cigar(in_rec);
         int opcode=bam_cigar_op(cigar_full[c]);
@@ -114,9 +117,11 @@ void addCov(GSamRecord& r, int dupCount, GVec<uint16_t>& bcov, int b_start) {
     }
 }
 
+//b_start MUST be passed 1-based
 void flushCoverage(sam_hdr_t* hdr, GVec<uint16_t>& bcov,  int tid, int b_start) {
-  if (tid<0 || b_start<0) return;
+  if (tid<0 || b_start<=0) return;
   int i=0;
+  b_start--; //to make it 0-based;
   while (i<bcov.Count()) {
      uint16_t icov=bcov[i];
      int j=i+1;
@@ -156,37 +161,36 @@ int main(int argc, char *argv[])  {
     GVec<uint16_t> bcov(4096*1024);
     int b_end=0; //bundle start, end (1-based)
     int b_start=0; //1 based
-    GSamRecord* brec=NULL;
-	while ((brec=samreader.next())!=NULL) {
-		    int nh = brec->tag_int("NH");
-		    if(nh>filters.max_nh) { delete brec; continue; }
-		    if (brec->mapq()<filters.min_qual) { delete brec; continue; }
-		    int endpos=brec->end;
-		    if (brec->refId()!=prev_tid || (int)brec->start>b_end) {
+    GSamRecord brec;
+	while (samreader.next(brec)) {
+		    int nh = brec.tag_int("NH");
+		    if(nh>filters.max_nh)  continue;
+		    if (brec.mapq()<filters.min_qual) continue;
+		    int endpos=brec.end;
+		    if (brec.refId()!=prev_tid || (int)brec.start>b_end) {
 		    	if (coutf)
 			       flushCoverage(samreader.header() , bcov, prev_tid, b_start);
 			    if (joutf)
 			       flushJuncs(joutf, samreader.refName(prev_tid));
-			    b_start=brec->start;
+			    b_start=brec.start;
 			    b_end=endpos;
 			    if (coutf) {
 			      bcov.setCount(0);
 			      bcov.setCount(b_end-b_start+1);
 			    }
-			    prev_tid=brec->refId();
+			    prev_tid=brec.refId();
 		    } else { //extending current bundle
 			    if (b_end<endpos) {
 				    b_end=endpos;
 				    bcov.setCount(b_end-b_start+1, (int)0);
 			    }
 		    }
-		    int accYC = brec->tag_int("YC", 1);
+		    int accYC = brec.tag_int("YC", 1);
 		    if (coutf)
-		       addCov(*brec, accYC, bcov, b_start);
-		    if (joutf && brec->exons.Count()>1) {
-		    	addJunction(*brec, accYC);
+		       addCov(brec, accYC, bcov, b_start);
+		    if (joutf && brec.exons.Count()>1) {
+		    	addJunction(brec, accYC);
 		    }
-		    delete brec;
 	} //while GSamRecord emitted
 	if (coutf) {
        flushCoverage(samreader.header(), bcov, prev_tid, b_start);

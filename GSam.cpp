@@ -349,6 +349,7 @@ switch (cop) {
 } // interpret_CIGAR(), just a reference of CIGAR operations interpretation
 
  void GSamRecord::setupCoordinates() {
+	if (!b) return;
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
