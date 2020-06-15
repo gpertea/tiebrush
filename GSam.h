@@ -43,8 +43,10 @@ class GSamRecord: public GSeg {
    int clipR=0;
    int mapped_len=0; //sum of exon lengths
    //FIXME: DEBUG only fields
+#ifdef _DEBUG
    char* _cigar=NULL;
    const char* _read=NULL;
+#endif
    // -- DEBUG only fields
    bool isHardClipped() { return hard_Clipped; }
    bool isSoftClipped() { return soft_Clipped; }
@@ -60,8 +62,10 @@ class GSamRecord: public GSeg {
       else {
            b=from_b; //it'll take over from_b
            novel=b_free;
+#ifdef _DEBUG
            _cigar=cigar();
            _read=name();
+#endif
            setupCoordinates();//set 1-based coordinates (start, end and exons array)
       }
    }
@@ -70,20 +74,25 @@ class GSamRecord: public GSeg {
 	   clear();
 	   novel=adopt_b;
 	   b=from_b;
+#ifdef _DEBUG
        _cigar=cigar();
        _read=name();
+#endif
 	   b_hdr=b_header;
 	   setupCoordinates();
    }
 
    //deep copy constructor:
    GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(r.iflags), b_hdr(r.b_hdr),
-		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len),
-		   _cigar(NULL), _read(r._read) {
+		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len)
+		   {
 	      //makes a new copy of the bam1_t record etc.
 	      b=bam_dup1(r.b);
 	      novel=true; //will also free b when destroyed
+#ifdef _DEBUG
 	      _cigar=Gstrdup(r._cigar);
+	      _read=r._read;
+#endif
    }
 
    const GSamRecord& operator=(GSamRecord& r) {
@@ -99,8 +108,10 @@ class GSamRecord: public GSeg {
       clipL = r.clipL;
       clipR = r.clipR;
       mapped_len=r.mapped_len;
+#ifdef _DEBUG
       _cigar=Gstrdup(r._cigar);
       _read=r._read;
+#endif
       return *this;
    }
 
@@ -116,8 +127,10 @@ class GSamRecord: public GSeg {
         mapped_len=0;
         b_hdr=NULL;
         iflags=0;
+#ifdef _DEBUG
         GFREE(_cigar);
         _read=NULL;
+#endif
     }
 
     ~GSamRecord() {
@@ -172,6 +185,9 @@ class GSamRecord: public GSeg {
     int add_int_tag(const char tag[2], int64_t val) { //add or update int tag
     	return bam_aux_update_int(b, tag, val);
     }
+    int remove_tag(const char tag[2]);
+    inline int delete_tag(const char tag[2]) { return remove_tag(tag); }
+
  //--query methods:
  uint32_t flags() { return b->core.flag; } //return SAM flags
  bool isUnmapped() { return ((b->core.flag & BAM_FUNMAP) != 0); }
@@ -427,7 +443,9 @@ class GSamWriter {
          GError("Error: could not create output file %s\n", fname);
       if (sam_hdr_write(bam_file, hdr)<0)
     	  GError("Error writing header data to file %s\n", fname);
+      ks_free(&mode);
    }
+
    sam_hdr_t* header() { return hdr; }
    GSamWriter(const char* fname, const char* hdr_file, GSamFileType ftype=GSamFile_BAM):
 	                                             bam_file(NULL),hdr(NULL) {

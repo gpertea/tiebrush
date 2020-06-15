@@ -131,8 +131,9 @@ struct GSegList { //per sample per strand
 		 }
 	 }
  }
- int processRead(GSamRecord& r) { //get gap distance for alignment and merge it
+ int processRead(GSamRecord& r) { //get preceding gap distance for alignment and merge it
 	 //this should only be called ONCE per collapsed read and sample
+	 //should NOT be called on reads coming from already merged samples!
 	 if (last_pos==r.start) { //called on the same sample and start position
 	     mergeRead(r);
 		 return last_dist;
@@ -237,14 +238,14 @@ class SPData { // Same Point data
   public:
 	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
 	int64_t accYX; //if any merged records had YX tag, their values are accumulated here
-	int64_t vYD; // min distance from previous read across samples (spacing distance)
+	int64_t minYD; // min distance from previous read across samples (spacing distance)
 	GBitVec* samples; //which samples were the collapsed ones coming from
 	                 //number of bits set will be stored as YX:i:(samples.count()+accYX)
 	int dupCount; //duplicity count - how many single-alignments were merged into r
 	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
 	char tstrand; //'-','+' or '.'
-    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), vYD(-1),samples(NULL),
+    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), minYD(-1),samples(NULL),
     		dupCount(0), r(rec), tstrand('.') {
     	if (r!=NULL) tstrand=r->spliceStrand();
     }
@@ -257,33 +258,36 @@ class SPData { // Same Point data
     void detach(bool dontFree=true) { settled=!dontFree; }
     //detach(true) must never be called before settle()
 
-    void settle(int sampleIdx=-1) { //becomes a standalone SPData record
+    void settle(TInputRecord& trec) { //becomes a standalone SPData record
     	// duplicates the current record
-    	if (!settled) { //r is not owned
-    		settled=true;
-    		GSamRecord* rdup=new GSamRecord(*r);
-    		r=rdup;
-    	}
+    	settled=true;
+    	trec.disown();
     	if (samples==NULL)
-    		samples=new GBitVec(inRecords.readers.Count());
-    	accYC=r->tag_int("YC");
-    	if (accYC==0) ++dupCount;
-    	accYX=r->tag_int("YX");
-    	vYD=r->tag_int("YD", -1);
-    	if (accYX==0 && sampleIdx>=0) samples->set(sampleIdx);
+    		samples=new GBitVec(inRecords.freaders.Count());
+
+    	if (trec.tbMerged) {
+    		accYC=r->tag_int("YC", 1);
+    		accYX=r->tag_int("YX", 1);
+    		minYD=r->tag_int("YD", 0);
+    	} else {
+    		++dupCount;
+    		samples->set(trec.fidx);
+    	}
     }
 
-    void dupAdd(GSamRecord* rec, int sampleIdx=-1) { //merge an external SAM record into this one
+    void dupAdd(TInputRecord& trec) { //merge an external SAM record into this one
     	if (!settled) GError("Error: cannot merge a duplicate into a non-settled SP record!\n");
+    	GSamRecord& rec=*trec.brec;
     	//WARNING: rec MUST be a "duplicate" of current record r
-    	int64_t rYC=rec->tag_int("YC");
-    	if (rYC) accYC+=rYC;
-    	   else ++dupCount;
-    	int64_t rYX=rec->tag_int("YX");
-    	if (rYX) accYX+=rYX;
-    	   else if (sampleIdx>=0) samples->set(sampleIdx);
-    	int64_t minYD=rec->tag_int("YD",-1);
-    	if (minYD>=0) vYD=minYD;
+    	if (trec.tbMerged) {
+    		accYC+=rec.tag_int("YC",1);
+    		accYX+=rec.tag_int("YX", 1);
+    		int64_t vYD=rec.tag_int("YD",0);
+    		if (vYD<minYD) minYD=vYD; //keep only minimum YD value
+    	} else {
+    		dupCount++;
+    		samples->set(trec.fidx);
+    	}
     }
 
     bool operator<(const SPData& b) {
@@ -331,8 +335,8 @@ void addPData(TInputRecord& irec, GList<SPData>& spdlst) {
 	if (spdlst.Count()>0) {
 		//find if irec can merge into existing SPData
 		SPData* spf=spdlst.AddIfNew(newspd, false);
-		if (spf!=newspd) { //matches existing SP entry spf
-			spf->dupAdd(irec.brec, irec.fidx); //update existing SP entry
+		if (spf!=newspd) { //matches existing SP entry spf, merge
+			spf->dupAdd(irec); //update existing SP entry
 			delete newspd;
 			return;
 		} // not a novel SP data
@@ -341,7 +345,7 @@ void addPData(TInputRecord& irec, GList<SPData>& spdlst) {
 	else { // empty list, just add this
 		spdlst.Add(newspd);
 	}
-	newspd->settle(irec.fidx); //keep its own SAM record copy
+	newspd->settle(irec); //keep its own SAM record copy
 }
 
 void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
@@ -351,14 +355,12 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	  SPData& spd=*(spdlst.Get(i));
 	  int64_t accYC=spd.accYC+spd.dupCount;
 	  int64_t accYX=spd.accYX;
-	  int mrgSamples=spd.samples->count();
-	  //if (spd.dupCount>1) { //just to save an unnecessary GBitVec::count() call?
-	   accYX+=mrgSamples;
-	  //
+	  int dSamples=spd.samples->count(); //this only has direct, non-TieBrush samples
+	  accYX+=dSamples;
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
 	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
-	  if (spd.vYD>0 || spd.vYD==-1) {
-		int dmin=(spd.vYD>0) ? spd.vYD : MAX_INT;
+	  if (spd.minYD>0 || spd.minYD==-1) {
+		int dmin=(spd.minYD>0) ? spd.minYD : MAX_INT;
 	    for(int s=spd.samples->find_first();s>=0;
 	    		s=spd.samples->find_next(s)) {
 	    	if (spd.tstrand=='+' || spd.tstrand=='.') {
@@ -372,10 +374,12 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	    	   if (dmin==0) break;
 	    	}
 	    } //for each bit index/sample
-	    spd.vYD=dmin;
+	    spd.minYD=dmin;
 	  } //if we needed to find min dist
-	  if (spd.vYD<0) GError("Error: YD tag not set!\n");
-	  spd.r->add_int_tag("YD", spd.vYD);
+	  if (spd.minYD<0 || spd.minYD==MAX_INT)
+		    GError("Error: YD tag not properly set!\n");
+	  if (spd.minYD>0) spd.r->add_int_tag("YD", spd.minYD);
+	  else spd.r->remove_tag("YD");
 	  outfile->write(spd.r);
 	  outCounter++;
   }
@@ -396,6 +400,7 @@ int main(int argc, char *argv[])  {
 	rspacing.init(numSamples);
 	TInputRecord* irec=NULL;
 	GSamRecord* brec=NULL;
+
 	GList<SPData> spdata(true, true, true); //list of Same Position data, with all possibly merged records
 	bool newChr=false;
 	int prev_pos=-1;
@@ -406,6 +411,7 @@ int main(int argc, char *argv[])  {
 		 inCounter++;
 		 int tid=brec->refId();
 		 int pos=brec->start; //1-based
+
 		 if (tid!=prev_tid) {
 			 if (prev_tid!=-1) newChr=true;
 			 prev_tid=tid;
@@ -469,7 +475,7 @@ void processOptions(int argc, char* argv[]) {
 	const char* ifn=NULL;
 	while ( (ifn=args.nextNonOpt())!=NULL) {
 		//input alignment files
-		inRecords.Add(ifn);
+		inRecords.addFile(ifn);
 	}
 }
 

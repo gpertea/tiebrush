@@ -401,6 +401,13 @@ switch (cop) {
    return bam_aux_get(this->b, tag);
  }
 
+ int GSamRecord::remove_tag(const char tag[2]) {
+   uint8_t* p=bam_aux_get(this->b, tag);
+   if (p!=NULL) return bam_aux_del(this->b, p);
+   return 0;
+ }
+
+
  char GSamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
    uint8_t* s=find_tag(tag);
    if (s) return ( bam_aux2A(s) );
