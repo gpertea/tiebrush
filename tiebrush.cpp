@@ -47,19 +47,23 @@ struct GSegList { //per sample per strand
   uint last_pos;
   int last_dist;
   GSegList():startNode(NULL),last_pos(0),last_dist(-1) {
-	  //a new list always has (0,0) interval
-	  startNode=new GSegNode();
+	  //a new list always has (0,0) interval -- no longer needed
+	  //startNode=new GSegNode();
   }
+
   ~GSegList() {
 	  clear();
   }
+
   void reset() {
 	  clear();
 	  last_pos=0;
 	  last_dist=-1;
-	  startNode=new GSegNode();
+	  //startNode=new GSegNode();
+	  startNode=NULL;
   }
-  void clear() { //delete everything except start record
+
+  void clear() { //delete all nodes
 	  GSegNode* p=startNode;
 	  GSegNode* next;
 	  while (p) {
@@ -67,42 +71,50 @@ struct GSegList { //per sample per strand
 		  delete p;
 		  p=next;
 	  }
+	  startNode=NULL;
   }
 
-  void clearTo(GSegNode* to) {
+  void clearTo(GSegNode* toNode) {
+	  //clear every node up to and *including* toNode
 	  GSegNode* p=startNode;
 	  GSegNode* next;
-	  while (p && p!=to) {
+	  while (p && p!=toNode) {
 		  next=p->next;
 		  delete p;
 		  p=next;
 	  }
-	  if (p==NULL) GError("Error: clearTo did not find node %d-%d!\n",
-			  to->start(), to->end());
-	  startNode=to;
+	  if (p==NULL) GError("Error: clearTo did not find target node %d-%d!\n",
+			  toNode->start(), toNode->end());
+	  next=toNode->next;
+	  delete toNode;
+	  startNode=next;
   }
 
  void mergeRead(GSamRecord& r) {
-	 //simple case when only start(0,0) is there
-	 if (startNode->next==NULL) {
-		 GSegNode* prev=startNode;
-		 for (int i=0;i<r.exons.Count();i++){
+	 if (startNode==NULL) {
+		 startNode=new GSegNode(r.exons[0]);
+		 GSegNode* cn=startNode;
+		 for (int i=1;i<r.exons.Count();i++){
 			 GSegNode* n=new GSegNode(r.exons[i]);
-			 prev->next=n;
-			 prev=n;
+			 cn->next=n;
+			 cn=n;
 		 }
 		 return;
 	 }
-	 GSegNode *n=startNode->next; //never check 0,0
-	 GSegNode *prev=startNode;
+	 GSegNode *n=startNode;
+	 GSegNode *prev=NULL;
 	 for (int i=0;i<r.exons.Count();i++) {
 		 GSeg& e=r.exons[i];
 		 while (n) {
             if (e.end < n->start()) {
-              //exon should be inserted before n
+              //exon should be inserted before n!
               GSegNode* nw=new GSegNode(e, n);
-              prev->next=nw;
-              prev=nw; //n is unchanged
+              if (n==startNode)
+            	startNode=nw;
+              else
+                prev->next=nw;
+              //n is unchanged
+          	  prev=nw;
               break; //check next exon against n
             }
             // e.end >= node start
@@ -131,6 +143,7 @@ struct GSegList { //per sample per strand
 		 }
 	 }
  }
+ /*
  int processRead(GSamRecord& r) { //get preceding gap distance for alignment and merge it
 	 //this should only be called ONCE per collapsed read and sample
 	 //should NOT be called on reads coming from already merged samples!
@@ -155,6 +168,38 @@ struct GSegList { //per sample per strand
      mergeRead(r);
 	 return d;
  }
+ */
+ int processRead(GSamRecord& r) { //return d=current bundle extent upstream
+	 //if the read starts after a gap, d=0
+	 //this should only be called ONCE per collapsed read and sample
+	 //should NOT be called on reads coming from already merged samples!
+	 if (last_pos==r.start) { //already called on the same sample and start position
+	     mergeRead(r);
+		 return last_dist;
+	 }
+	 int d=0;
+	 GSegNode* node=startNode;
+	 GSegNode* prev=NULL;
+	 while (node && node->start()< r.start) {
+		 prev=node;
+		 node=node->next;
+	 }
+	 //prev is the last segment starting before r
+	 if (prev) {
+		 if (prev->end()>=r.start)  // r overlaps prev segment
+			d=r.start - prev->start();
+		 if (d==0)
+			clearTo(prev); //clear all nodes including prev
+	 }
+
+     if (last_pos!=r.start) {
+    	 last_pos=r.start;
+    	 last_dist=d;
+     }
+     mergeRead(r);
+	 return d;
+ }
+
 
 };
 
@@ -238,14 +283,14 @@ class SPData { // Same Point data
   public:
 	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
 	int64_t accYX; //if any merged records had YX tag, their values are accumulated here
-	int64_t minYD; // min distance from previous read across samples (spacing distance)
+	int64_t maxYD; //max distance from previous read across samples (spacing distance)
 	GBitVec* samples; //which samples were the collapsed ones coming from
 	                 //number of bits set will be stored as YX:i:(samples.count()+accYX)
 	int dupCount; //duplicity count - how many single-alignments were merged into r
 	              // will be stored as tag YC:i:(dupCount+accYC)
 	GSamRecord* r;
 	char tstrand; //'-','+' or '.'
-    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), minYD(-1),samples(NULL),
+    SPData(GSamRecord* rec=NULL):settled(false), accYC(0), accYX(0), maxYD(0),samples(NULL),
     		dupCount(0), r(rec), tstrand('.') {
     	if (r!=NULL) tstrand=r->spliceStrand();
     }
@@ -268,7 +313,7 @@ class SPData { // Same Point data
     	if (trec.tbMerged) {
     		accYC=r->tag_int("YC", 1);
     		accYX=r->tag_int("YX", 1);
-    		minYD=r->tag_int("YD", 0);
+    		maxYD=r->tag_int("YD", 0);
     	} else {
     		++dupCount;
     		samples->set(trec.fidx);
@@ -283,10 +328,14 @@ class SPData { // Same Point data
     		accYC+=rec.tag_int("YC",1);
     		accYX+=rec.tag_int("YX", 1);
     		int64_t vYD=rec.tag_int("YD",0);
-    		if (vYD<minYD) minYD=vYD; //keep only minimum YD value
+    		if (vYD>maxYD) maxYD=vYD; //keep only maximum YD value
     	} else {
-    		dupCount++;
-    		samples->set(trec.fidx);
+    		//avoid collapsing same read alignment duplicated just for pairing reasons
+    		if (!samples->test(trec.fidx) || rec.pairOrder()!=r->pairOrder() ||
+    				strcmp(r->name(), rec.name())!=0) {
+    		   dupCount++;
+    		   samples->set(trec.fidx);
+    		}
     	}
     }
 
@@ -359,34 +408,26 @@ void flushPData(GList<SPData>& spdlst){ //write spdata to outfile
 	  accYX+=dSamples;
 	  if (accYC>1) spd.r->add_int_tag("YC", accYC);
 	  if (accYX>1) spd.r->add_int_tag("YX", accYX);
-	  if (spd.minYD>0 || spd.minYD==-1) {
-		int dmin=(spd.minYD>0) ? spd.minYD : MAX_INT;
-	    for(int s=spd.samples->find_first();s>=0;
+	  int dmax=spd.maxYD;
+	  for(int s=spd.samples->find_first();s>=0;
 	    		s=spd.samples->find_next(s)) {
 	    	if (spd.tstrand=='+' || spd.tstrand=='.') {
 	    	   int r=rspacing.fsegs[s].processRead(*spd.r);
-	    	   if (r<dmin) dmin=r;
-	    	   if (dmin==0) break;
+	    	   if (r>dmax) dmax=r;
 	    	}
 	    	if (spd.tstrand=='-' || spd.tstrand=='.') {
 	    	   int r=rspacing.rsegs[s].processRead(*spd.r);
-	    	   if (r<dmin) dmin=r;
-	    	   if (dmin==0) break;
+	    	   if (r>dmax) dmax=r;
 	    	}
-	    } //for each bit index/sample
-	    spd.minYD=dmin;
-	  } //if we needed to find min dist
-	  if (spd.minYD<0 || spd.minYD==MAX_INT)
-		    GError("Error: YD tag not properly set!\n");
-	  if (spd.minYD>0) spd.r->add_int_tag("YD", spd.minYD);
+	  } //for each bit index/sample
+	  spd.maxYD=dmax;
+	  if (spd.maxYD>0) spd.r->add_int_tag("YD", spd.maxYD);
 	  else spd.r->remove_tag("YD");
 	  outfile->write(spd.r);
 	  outCounter++;
   }
   spdlst.Clear();
 }
-
-
 
 // >------------------ main() start -----
 int main(int argc, char *argv[])  {
