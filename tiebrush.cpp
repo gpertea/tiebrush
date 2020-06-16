@@ -143,32 +143,7 @@ struct GSegList { //per sample per strand
 		 }
 	 }
  }
- /*
- int processRead(GSamRecord& r) { //get preceding gap distance for alignment and merge it
-	 //this should only be called ONCE per collapsed read and sample
-	 //should NOT be called on reads coming from already merged samples!
-	 if (last_pos==r.start) { //called on the same sample and start position
-	     mergeRead(r);
-		 return last_dist;
-	 }
-	 int d=0;
-	 GSegNode* node=startNode;
-	 GSegNode* prev=startNode;
-	 while (node && node->start()< r.start) {
-		 if (node->end()<r.start) { //node ends before r
-			 d=r.start-node->end()-1;
-		 } else //overlap
-			 d=0;
-		 prev=node;
-		 node=node->next;
-	 }
-     if (prev!=startNode) {
-    	 clearTo(prev);
-     }
-     mergeRead(r);
-	 return d;
- }
- */
+
  int processRead(GSamRecord& r) { //return d=current bundle extent upstream
 	 //if the read starts after a gap, d=0
 	 //this should only be called ONCE per collapsed read and sample

@@ -32,9 +32,6 @@ bool TInputFiles::addSam(GSamReader* r, int fidx) {
 	}
 	if (mHdr==NULL) { //first file
 		mHdr=sam_hdr_dup(r->header());
-		sam_hdr_add_pg(mHdr, "TieBrush",
-				"VN", pg_ver, "CL", pg_args.chars(), NULL);
-		// sam_hdr_rebuild(mHdr); -- is this really needed?
 	}
 	else { //check if this file has the same SQ entries in the same order
 		//if it has more seqs, make it the main header
@@ -69,6 +66,11 @@ bool TInputFiles::addSam(GSamReader* r, int fidx) {
 	ks_free(&str);
     freaders[fidx]->samreader=r;
     freaders[fidx]->tbMerged=tb_file;
+    if (fidx==freaders.Count()-1) { //last samreader entry
+		sam_hdr_add_pg(mHdr, "TieBrush",
+				"VN", pg_ver, "CL", pg_args.chars(), NULL);
+		// sam_hdr_rebuild(mHdr); -- is this really needed?
+    }
     return tb_file;
 }
 
@@ -108,6 +110,7 @@ int TInputFiles::start() {
 		GSamReader* samrd=new GSamReader(freaders[i]->fname.chars(),
 				SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
 		bool tb_merged=addSam(samrd, i); //merge SAM headers etc.
+
 		GSamRecord* brec=samrd->next();
 		if (brec)
 		   recs.Add(new TInputRecord(brec, i, tb_merged));
