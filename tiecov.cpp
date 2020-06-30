@@ -53,7 +53,7 @@ struct CJunc {
 		int fend=end+ovh_end;
 		juncCount++;
 		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\t%d\t%d\t255,0,0,\t2\t%d,%d\t0,%d\n",
-				chr, fstart, fend, juncCount, dupcount, strand, fstart, fend,
+				chr, start, end, juncCount, dupcount, strand, fstart, fend,
 				ovh_start, ovh_end, end-start+ovh_start);
 	}
 };
