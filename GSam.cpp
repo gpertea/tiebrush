@@ -349,6 +349,7 @@ switch (cop) {
 } // interpret_CIGAR(), just a reference of CIGAR operations interpretation
 
  void GSamRecord::setupCoordinates() {
+	if (!b) return;
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
@@ -400,6 +401,13 @@ switch (cop) {
    return bam_aux_get(this->b, tag);
  }
 
+ int GSamRecord::remove_tag(const char tag[2]) {
+   uint8_t* p=bam_aux_get(this->b, tag);
+   if (p!=NULL) return bam_aux_del(this->b, p);
+   return 0;
+ }
+
+
  char GSamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
    uint8_t* s=find_tag(tag);
    if (s) return ( bam_aux2A(s) );
@@ -416,10 +424,10 @@ switch (cop) {
  	else return 0;
  }
 
- int64_t GSamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
+ int64_t GSamRecord::tag_int(const char tag[2], int nfval) { //get the numeric value of tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2i(s) );
-   return 0;
+   return nfval;
  }
 
  double GSamRecord::tag_float(const char tag[2]) { //get the float value of tag

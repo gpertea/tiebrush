@@ -7,9 +7,21 @@
 #include "GSam.h"
 #include "htslib/khash.h"
 
+struct TSamReader {
+	GStr fname;
+	GSamReader* samreader;
+	bool tbMerged; //based on the header, is the file a product of TieBrush?
+	TSamReader(const char* fn=NULL, GSamReader* samr=NULL):
+		fname(fn), samreader(samr), tbMerged(false) {}
+	~TSamReader() {
+		delete samreader;
+	}
+};
+
 struct TInputRecord {
 	GSamRecord* brec;
-	int fidx; //index in files and readers
+	int fidx; //file index in files and readers
+	bool tbMerged; //is it from a TieBrush generated file?
 	bool operator<(TInputRecord& o) {
 		 //decreasing location sort
 		 GSamRecord& r1=*brec;
@@ -41,8 +53,11 @@ struct TInputRecord {
 				 memcmp(r1.get_b()->data, r1.get_b()->data, r1.get_b()->l_data)==0
 				 );
 	}
-
-	TInputRecord(GSamRecord* b=NULL, int i=0):brec(b),fidx(i) {}
+    void disown() {
+    	brec=NULL;
+    }
+	TInputRecord(GSamRecord* b=NULL, int i=0, bool tb_merged=false):brec(b),
+			fidx(i),tbMerged(tb_merged) {}
 	~TInputRecord() {
 		delete brec;
 	}
@@ -56,12 +71,12 @@ struct TInputFiles {
 	char* pg_ver;
 	GStr pg_args;
  public:
-	GVec<GStr> files; //same order as readers
-	GPVec<GSamReader> readers;
-	void addSam(GSamReader* r); //update mHdr data
+	GPVec<TSamReader> freaders;
+	void addFile(const char* fn);
+	bool addSam(GSamReader* r, int fidx); //update mHdr data
 	GList<TInputRecord> recs; //next record for each
 	TInputFiles():crec(NULL), mHdr(NULL), pg_ver(NULL), pg_args(),
-			files(), readers(true), recs(true, true, true) { }
+			freaders(true), recs(true, true, true) { }
 
 	sam_hdr_t* header() { return mHdr; }
 
@@ -75,9 +90,12 @@ struct TInputFiles {
 		}
 	}
 
-	~TInputFiles() { GFREE(pg_ver); sam_hdr_destroy(mHdr); }
-	void Add(const char* fn);
-	int count() { return files.Count(); }
+	~TInputFiles() {
+		GFREE(pg_ver);
+		sam_hdr_destroy(mHdr);
+	}
+
+	int count() { return freaders.Count(); }
 	int start(); //open all files, load 1 record from each
 	TInputRecord* next();
 	void stop(); //

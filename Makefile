@@ -4,7 +4,7 @@ GDIR := ../gclib
 PKGPATH := $(if $(XLIB),export PKG_CONFIG_PATH=$(XLIB)/pkgconfig,true)
 HTSLIBS := $(shell ${PKGPATH}; pkg-config --libs --static htslib)
 ifeq ($(HTSLIBS),)
- $(error ERROR: htslib installation not found. Please install htslib first)
+ $(error ERROR: htslib not found. Please install htslib first)
 endif
 
 HTSINC := $(shell ${PKGPATH}; pkg-config --cflags htslib)
@@ -27,7 +27,7 @@ INCDIRS := -I${GDIR} ${HTSINC}
 CXX   := $(if $(CXX),$(CXX),g++)
 
 BASEFLAGS := -Wall -Wextra ${INCDIRS} -fsigned-char -D_FILE_OFFSET_BITS=64 \
--D_LARGEFILE_SOURCE -std=c++0x -fno-strict-aliasing -fno-exceptions -fno-rtti
+-D_LARGEFILE_SOURCE -std=c++11 -fno-strict-aliasing -fno-exceptions -fno-rtti
 #for gcc 8+ add: -Wno-class-memaccess
 GCCVER5 := $(shell expr `${CXX} -dumpversion | cut -f1 -d.` \>= 5)
 ifeq "$(GCCVER5)" "1"
@@ -130,7 +130,8 @@ ifdef DEBUG_BUILD
   DBG_WARN+='WARNING: built DEBUG version, use "make clean release" for a faster version of the program.'
 endif
 
-OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o ./tmerge.o
+OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./tmerge.o ./GSam.o
+COVOBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o
 
 #OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
 # ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
@@ -149,13 +150,14 @@ endif
 
 # OBJS += rlink.o tablemaker.o tmerge.o
 
-all release static debug: tiebrush${EXE}
-memcheck memdebug tsan tcheck thrcheck: tiebrush${EXE}
-memuse memusage memtrace: tiebrush${EXE}
+all release static debug: tiebrush tiecov
+memcheck memdebug tsan tcheck thrcheck: tiebrush tiecov
+memuse memusage memtrace: tiebrush tiecov
 #nothreads: tiebrush${EXE}
 
 GSam.o : GSam.h
 tiebrush.o : GSam.h tmerge.h
+tiecov.o : GSam.h
 tmerge.o : tmerge.h
 #${BAM}/libhts.a: 
 #	cd ${BAM} && make lib
@@ -163,15 +165,20 @@ tiebrush: $(OBJS) tiebrush.o
 	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 	@echo
 	${DBG_WARN}
-test demo tests: tiebrush${EXE}
-	@./run_tests.sh
+tiecov: $(COVOBJS) tiecov.o
+	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
+	@echo
+	${DBG_WARN}
+
+#test demo tests: tiebrush
+#	@./run_tests.sh
 .PHONY : clean cleanall cleanAll allclean
 
 # target for removing all object files
 
 #	echo $(PATH)
 clean:
-	${RM} tiebrush${EXE} tiebrush.o* $(OBJS)
+	${RM} tiebrush${EXE} tiecov tiecov.o* tiebrush.o* $(OBJS)
 	${RM} core.*
 allclean cleanAll cleanall:
 	cd ${BAM} && make clean
