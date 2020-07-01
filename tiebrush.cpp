@@ -258,7 +258,7 @@ class SPData { // Same Point data
   public:
 	int64_t accYC; //if any merged records had YC tag, their values are accumulated here
 	int64_t accYX; //if any merged records had YX tag, their values are accumulated here
-	int64_t maxYD; //max distance from previous read across samples (spacing distance)
+	int64_t maxYD; //max bundle extent upstream in all samples (0 when no preceding overlapping reads)
 	GBitVec* samples; //which samples were the collapsed ones coming from
 	                 //number of bits set will be stored as YX:i:(samples.count()+accYX)
 	int dupCount; //duplicity count - how many single-alignments were merged into r
