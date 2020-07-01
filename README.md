@@ -13,6 +13,13 @@ The initial goal is to generate this composite BAM file which multiplexes read a
 
 If either of these tags are missing (i.e. GBamRecord::__tag_int__() call returns 0) then the alignment is unique (when YC is 0) or only one sample has it (if YX is 0). The actual count in these cases is obviously 1. 
 
-In an attempt to reflect a measure of "mosaicity" for read alignments in a sample, the following tag is also added for each read:
+In an attempt to reflect a measure of "mosaicity" for read alignments in a sample, the following tag is also added :
 
-* __YD__:i:nn : nn = minimum spacing preceding the read alignment in the samles(s) that it belongs to
+* __YD__:i:nn : nn = maximum number of contiguous bases preceding the start of the read alignment in the samples(s) that it belongs to; in other words: if the alignment is in an exon-overlapping bundle (strand specific!), this value holds the maximum distance from the beginning of the bundle to the start of the alignment, across all samples having this alignment. If the alignment is not in a bundle (i.e. it is preceded by a gap, it is not overlapped by another alignment with a lower start position) in all the individual samples where that alignment is present, then the YD value is 0 and the tag is no longer written in the output file produced by TieBrush. 
+
+
+# TieCov
+
+The tiecov utility can take the output file produced by TieBrush and can generate the following auxiliary base/junction coverage files:
+   * a BedGraph file with the coverage data (see http://genome.ucsc.edu/goldenPath/help/bedgraph.html); this file can be converted to BigWig (using bedGraphToBigWig) or to TDF format (using igvtools) in order to be loaded in IGV as an additional coverage track
+   * a junction BED file which can be loaded directly in IGV as an additional junction track (http://software.broadinstitute.org/software/igv/splice_junctions)
