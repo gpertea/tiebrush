@@ -31,9 +31,8 @@ struct CJunc {
 	uint32_t dupcount;
 	uint16_t ovh_start, ovh_end;
 	CJunc(int vs=0, int ve=0, char vstrand='+', uint32_t dcount=1, uint16_t ovhs=0, uint16_t ovhe=0):
-	start(vs), end(ve), strand(vstrand), dupcount(dcount),ovh_start(ovhs), ovh_end(ovhe) {
-		if (vs) dupcount=1;
-	}
+	  start(vs), end(ve), strand(vstrand), dupcount(dcount),ovh_start(ovhs), ovh_end(ovhe) { }
+
 	bool operator==(const CJunc& a) {
 		return (strand==a.strand && start==a.start && end==a.end);
 	}
