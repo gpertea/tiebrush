@@ -28,9 +28,9 @@ int juncCount=0;
 struct CJunc {
 	int start, end;
 	char strand;
-	uint16_t dupcount;
+	uint32_t dupcount;
 	uint16_t ovh_start, ovh_end;
-	CJunc(int vs=0, int ve=0, char vstrand='+', uint16_t dcount=1, uint16_t ovhs=0, uint16_t ovhe=0):
+	CJunc(int vs=0, int ve=0, char vstrand='+', uint32_t dcount=1, uint16_t ovhs=0, uint16_t ovhe=0):
 	start(vs), end(ve), strand(vstrand), dupcount(dcount),ovh_start(ovhs), ovh_end(ovhe) {
 		if (vs) dupcount=1;
 	}
@@ -53,7 +53,7 @@ struct CJunc {
 		int fend=end+ovh_end;
 		juncCount++;
 		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\t%d\t%d\t255,0,0,\t2\t%d,%d\t0,%d\n",
-				chr, start, end, juncCount, dupcount, strand, fstart, fend,
+				chr, fstart, fend, juncCount, dupcount, strand, fstart, fend,
 				ovh_start, ovh_end, end-start+ovh_start);
 	}
 };
@@ -86,7 +86,7 @@ void processOptions(int argc, char* argv[]);
 
 
 //b_start MUST be passed 1-based
-void addCov(GSamRecord& r, int dupCount, GVec<uint16_t>& bcov, int b_start) {
+void addCov(GSamRecord& r, int dupCount, GVec<uint32_t>& bcov, int b_start) {
 	bam1_t* in_rec=r.get_b();
     int pos=in_rec->core.pos; // 0-based
     b_start--; //to make it 0-based
@@ -118,12 +118,12 @@ void addCov(GSamRecord& r, int dupCount, GVec<uint16_t>& bcov, int b_start) {
 }
 
 //b_start MUST be passed 1-based
-void flushCoverage(sam_hdr_t* hdr, GVec<uint16_t>& bcov,  int tid, int b_start) {
+void flushCoverage(sam_hdr_t* hdr, GVec<uint32_t>& bcov,  int tid, int b_start) {
   if (tid<0 || b_start<=0) return;
   int i=0;
   b_start--; //to make it 0-based;
   while (i<bcov.Count()) {
-     uint16_t icov=bcov[i];
+     uint32_t icov=bcov[i];
      int j=i+1;
      while (j<bcov.Count() && icov==bcov[j]) {
     	 j++;
@@ -158,7 +158,7 @@ int main(int argc, char *argv[])  {
        fprintf(joutf, "track name=junctions\n");
     }
     int prev_tid=-1;
-    GVec<uint16_t> bcov(4096*1024);
+    GVec<uint32_t> bcov(4096*1024);
     int b_end=0; //bundle start, end (1-based)
     int b_start=0; //1 based
     GSamRecord brec;
