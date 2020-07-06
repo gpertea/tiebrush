@@ -29,9 +29,8 @@ struct CJunc {
 	int start, end;
 	char strand;
 	uint32_t dupcount;
-	uint16_t ovh_start, ovh_end;
-	CJunc(int vs=0, int ve=0, char vstrand='+', uint32_t dcount=1, uint16_t ovhs=0, uint16_t ovhe=0):
-	  start(vs), end(ve), strand(vstrand), dupcount(dcount),ovh_start(ovhs), ovh_end(ovhe) { }
+	CJunc(int vs=0, int ve=0, char vstrand='+', uint32_t dcount=1):
+	  start(vs), end(ve), strand(vstrand), dupcount(dcount) { }
 
 	bool operator==(const CJunc& a) {
 		return (strand==a.strand && start==a.start && end==a.end);
@@ -43,28 +42,23 @@ struct CJunc {
 
 	void add(CJunc& j) {
        dupcount+=j.dupcount;
-       if (j.ovh_start>ovh_start) ovh_start=j.ovh_start;
-       if (j.ovh_end>ovh_end) ovh_end=j.ovh_end;
 	}
 
 	void write(FILE* f, const char* chr) {
-		int fstart=start-ovh_start;
-		int fend=end+ovh_end;
 		juncCount++;
-		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\t%d\t%d\t255,0,0,\t2\t%d,%d\t0,%d\n",
-				chr, fstart, fend, juncCount, dupcount, strand, fstart, fend,
-				ovh_start, ovh_end, end-start+ovh_start);
+		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\n",
+				chr, start-1, end, juncCount, dupcount, strand);
 	}
 };
 
-GArray<CJunc> junctions(128, true);
+GArray<CJunc> junctions(64, true);
 
 void addJunction(GSamRecord& r, int dupcount) {
 	char strand = r.spliceStrand();
 	if (strand!='+' && strand!='-') return;
 	for (int i=1;i<r.exons.Count();i++) {
 		CJunc j(r.exons[i-1].end+1, r.exons[i].start-1, strand,
-				dupcount, r.exons[i-1].len(), r.exons[i].len());
+				dupcount);
 		int ei;
 		int r=junctions.AddIfNew(j, &ei);
 		if (r==-1) {//existing junction, update
