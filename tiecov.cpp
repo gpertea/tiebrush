@@ -151,7 +151,7 @@ int main(int argc, char *argv[])  {
        fprintf(joutf, "track name=junctions\n");
     }
     int prev_tid=-1;
-    GVec<uint64_t> bcov(4096*1024);
+    GVec<uint64_t> bcov(2048*1024);
     int b_end=0; //bundle start, end (1-based)
     int b_start=0; //1 based
     GSamRecord brec;
