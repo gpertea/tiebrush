@@ -3,7 +3,7 @@
 #include "GVec.hh"
 #include "GSam.h"
 
-#define VERSION "0.0.3"
+#define VERSION "0.0.4"
 
 const char* USAGE="TieCov v" VERSION " usage:\n"
 " tiecov [-b out.flt.bam] [-c out.bedgraph] [-j out.junctions.bed] in.bam\n"
@@ -46,8 +46,8 @@ struct CJunc {
 
 	void write(FILE* f, const char* chr) {
 		juncCount++;
-		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%d\t%c\n",
-				chr, start-1, end, juncCount, dupcount, strand);
+		fprintf(f, "%s\t%d\t%d\tJUNC%08d\t%ld\t%c\n",
+				chr, start-1, end, juncCount, (long)dupcount, strand);
 	}
 };
 
@@ -122,7 +122,7 @@ void flushCoverage(sam_hdr_t* hdr, GVec<uint64_t>& bcov,  int tid, int b_start) 
     	 j++;
      }
      if (icov!=0)
-       fprintf(coutf, "%s\t%d\t%d\t%d\n", hdr->target_name[tid], b_start+i, b_start+j, icov);
+       fprintf(coutf, "%s\t%d\t%d\t%ld\n", hdr->target_name[tid], b_start+i, b_start+j, (long)icov);
      i=j;
   }
 }
