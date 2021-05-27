@@ -365,29 +365,57 @@ switch (cop) {
 	clipR=0;
 	start=c->pos+1; //genomic start coordinate, 1-based (BAM core.pos is 0-based)
 	int exstart=c->pos;
+	bool intron=false;
+	int del=0;
 	for (uint i = 0; i < c->n_cigar; ++i) {
-		uint32_t op = _cigOp(cigar[i]);
-		if (op == BAM_CMATCH || op==BAM_CEQUAL ||
-				op == BAM_CDIFF || op == BAM_CDEL) {
-			l += _cigLen(cigar[i]);
-		}
-		else if (op == BAM_CREF_SKIP) { //N
-			//intron starts
-			//exon ends here
-			has_Introns=true;
-			GSeg exon(exstart+1,c->pos+l);
-			exons.Add(exon);
-			mapped_len+=exon.len();
-			l += _cigLen(cigar[i]);
-			exstart=c->pos+l;
-		}
-		else if (op == BAM_CSOFT_CLIP) {
-			soft_Clipped=true;
-			if (l) clipR=_cigLen(cigar[i]);
-			else clipL=_cigLen(cigar[i]);
-		}
-		else if (op == BAM_CHARD_CLIP) {
-			hard_Clipped=true;
+		unsigned char op = _cigOp(cigar[i]);
+		switch(op) {
+		  case BAM_CEQUAL:    // =
+		  case BAM_CDIFF:     // X
+		  case BAM_CMATCH:    // M
+		    l+=_cigLen(cigar[i]);
+		    intron=false; del=0;
+		    break;
+		  case BAM_CDEL:      // D
+		    del=_cigLen(cigar[i]);
+		    l+=del;
+		    if(intron) // deletion after intron
+		      exstart+=del; //push exon start
+		    break;
+		  case BAM_CREF_SKIP: // N
+		    //intron starts
+		    //exon ends here
+		    {
+		    has_Introns=true;
+		    GSeg exon(exstart+1,c->pos+l-del);
+		    exons.Add( exon );
+		    mapped_len+=exon.len();
+		    l += _cigLen(cigar[i]);
+		    exstart=c->pos+l;
+		    }
+		    intron=true; del=0;
+		    break;
+		  case BAM_CSOFT_CLIP: // S
+		    soft_Clipped=true;
+		    if (l) clipR=_cigLen(cigar[i]);
+		      else clipL=_cigLen(cigar[i]);
+		    intron=false; del=0;
+		    break;
+		  case BAM_CHARD_CLIP:
+		    hard_Clipped=true;
+		    intron=false; del=0;
+		    break;
+		  case BAM_CINS:      // I
+		    //rpos+=cl; //gpos not advanced
+		    intron=false; del=0;
+		    break;
+		  case BAM_CPAD:
+		    //gpos+=cl;
+		    intron=false; del=0; //?
+		    break;
+		  default:
+		    int cl=_cigLen(cigar[i]);
+		    fprintf(stderr, "Unhandled CIGAR operation %d:%d\n", op, cl);
 		}
 	}
 	GSeg exon(exstart+1,c->pos+l);
