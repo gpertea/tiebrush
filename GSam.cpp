@@ -353,77 +353,57 @@ switch (cop) {
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
-	/*
-	//--- prevent alignment error here (reported by UB-sanitazer):
-	uint32_t *cigar= new uint32_t[c->n_cigar];
-	memcpy(cigar, p, c->n_cigar * sizeof(uint32_t));
-	//--- UBsan protection end
-    */
 	int l=0;
 	mapped_len=0;
 	clipL=0;
 	clipR=0;
 	start=c->pos+1; //genomic start coordinate, 1-based (BAM core.pos is 0-based)
 	int exstart=c->pos;
-	bool intron=false;
-	int del=0;
+	GSeg exon;
 	for (uint i = 0; i < c->n_cigar; ++i) {
 		unsigned char op = _cigOp(cigar[i]);
 		switch(op) {
 		  case BAM_CEQUAL:    // =
 		  case BAM_CDIFF:     // X
 		  case BAM_CMATCH:    // M
-		    l+=_cigLen(cigar[i]);
-		    intron=false; del=0;
-		    break;
 		  case BAM_CDEL:      // D
-		    del=_cigLen(cigar[i]);
-		    l+=del;
-		    if(intron) // deletion after intron
-		      exstart+=del; //push exon start
+		    l+=_cigLen(cigar[i]);
 		    break;
 		  case BAM_CREF_SKIP: // N
-		    //intron starts
-		    //exon ends here
-		    {
+		    // exon ends here
 		    has_Introns=true;
-		    GSeg exon(exstart+1,c->pos+l-del);
+		    exon.end=c->pos+l;
+		    exon.start=exstart+1;
 		    exons.Add( exon );
 		    mapped_len+=exon.len();
 		    l += _cigLen(cigar[i]);
 		    exstart=c->pos+l;
-		    }
-		    intron=true; del=0;
 		    break;
 		  case BAM_CSOFT_CLIP: // S
 		    soft_Clipped=true;
 		    if (l) clipR=_cigLen(cigar[i]);
 		      else clipL=_cigLen(cigar[i]);
-		    intron=false; del=0;
 		    break;
 		  case BAM_CHARD_CLIP:
 		    hard_Clipped=true;
-		    intron=false; del=0;
 		    break;
 		  case BAM_CINS:      // I
 		    //rpos+=cl; //gpos not advanced
-		    intron=false; del=0;
 		    break;
 		  case BAM_CPAD:
 		    //gpos+=cl;
-		    intron=false; del=0; //?
 		    break;
 		  default:
 		    int cl=_cigLen(cigar[i]);
 		    fprintf(stderr, "Unhandled CIGAR operation %d:%d\n", op, cl);
 		}
 	}
-	GSeg exon(exstart+1,c->pos+l);
+	exon.start=exstart+1;
+	exon.end=c->pos+l;
 	exons.Add(exon);
 	mapped_len+=exon.len();
 	end=c->pos+l; //genomic end coordinate
  }
-
 
  uint8_t* GSamRecord::find_tag(const char tag[2]) {
    return bam_aux_get(this->b, tag);
