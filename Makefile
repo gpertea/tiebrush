@@ -1,28 +1,19 @@
-## add additional library path here if needed (where libhts.a was installed)
-XLIB := /ccb/sw/lib
 GDIR := ../gclib
-PKGPATH := $(if $(XLIB),export PKG_CONFIG_PATH=$(XLIB)/pkgconfig,true)
-HTSLIBS := $(shell ${PKGPATH}; pkg-config --libs --static htslib)
-ifeq ($(HTSLIBS),)
- $(error ERROR: htslib not found. Please install htslib first)
-endif
 
-HTSINC := $(shell ${PKGPATH}; pkg-config --cflags htslib)
-HLDIR := $(shell ${PKGPATH};pkg-config --libs-only-L htslib)
-HLDIR := $(HLDIR:-L%=%)
+## assumed htslib has been pulled from https://github.com/gpertea/htslib
+HTSLIB := ../htslib
+#my branch of htslib includes libdeflate:
+LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
+LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
+INCDIRS := -I. -I${GDIR} -I${HTSLIB}
 
+BWLIB := ./bigwig
+
+INCDIRS += -I${BWLIB}
 
 #ifeq (${HLDIR}/libhts.a,$(wildcard ${HLDIR}/libhts.a))
 # HTSLIBS := $(subst -lhts,${HLDIR}/libhts.a,${HTSLIBS})
 #endif
-
-
-### libdeflate speeds up de/compression of BAM/CRAM
-# leave it blank if not available
-#LIBDEFLATE :=
-#LIBDEFLATE := $(if $(LIBDEFLATE),$(LIBDEFLATE),/ccb/sw/lib/libdeflate.a)
-
-INCDIRS := -I${GDIR} ${HTSINC}
 
 CXX   := $(if $(CXX),$(CXX),g++)
 
@@ -43,13 +34,15 @@ LINKER  := $(if $(LINKER),$(LINKER),g++)
 
 LDFLAGS := $(if $(LDFLAGS),$(LDFLAGS),-g)
 
-
-#LIBS :=${SAMLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto
-
-LIBS := ${HTSLIBS}
+LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
 
 #ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
 # NOTHREADS=1
+#endif
+
+# Compiling for Windows with MinGW/MSYS2?
+#ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+# LIBS += -lregex -lws2_32
 #endif
 
 #detect MinGW (Windows environment)
@@ -67,6 +60,7 @@ endif
 # File endings
 ifdef WINDOWS
  EXE = .exe
+ LIBS += -lregex -lws2_32
 else
  EXE =
 endif
@@ -161,12 +155,20 @@ tiecov.o : GSam.h
 tmerge.o : tmerge.h
 #${BAM}/libhts.a: 
 #	cd ${BAM} && make lib
-tiebrush: $(OBJS) tiebrush.o
+
+${BWLIB}/libBigWig.a:
+	./build_bwlib.sh
+
+
+${HTSLIB}/libhts.a: 
+	cd ${HTSLIB} && ./build_lib.sh
+
+tiebrush: ${HTSLIB}/libhts.a $(OBJS) tiebrush.o
 	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 	@echo
 	${DBG_WARN}
-tiecov: $(COVOBJS) tiecov.o
-	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${LIBS}
+tiecov: ${BWLIB}/libBigWig.a ${HTSLIB}/libhts.a $(COVOBJS) tiecov.o
+	${LINKER} ${LDFLAGS} -o $@ ${filter-out %.a %.so, $^} ${BWLIB}/libBigWig.a ${LIBS}
 	@echo
 	${DBG_WARN}
 

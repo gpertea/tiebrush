@@ -1,9 +1,11 @@
 #ifndef TIEBRUSH_TMERGE_H_
 #define TIEBRUSH_TMERGE_H_
+
+#include <map>
+#include <iostream>
 #include "GStr.h"
 #include "GVec.hh"
 #include "GList.hh"
-//#include "rlink.h"
 #include "GSam.h"
 #include "htslib/khash.h"
 
@@ -99,6 +101,19 @@ struct TInputFiles {
 	int start(); //open all files, load 1 record from each
 	TInputRecord* next();
 	void stop(); //
+
+	// index declarations
+    bool add_tb_tag_if_not_exists(sam_hdr_t *bh); // adds a line to the header which tells whether the file has been processed with tiebrush before
+    void delete_all_hdr_with_tag(sam_hdr_t *hdr,std::string tag1, std::string tag2);
+    std::string get_full_path(std::string fname);
+    void load_hdr_samples(sam_hdr_t* hdr,std::string filename,bool tbMerged,bool donor); // returns true if ID:SAMPLE present
+    bool get_sample_from_line(std::string& line);
+	std::string headerfilename; // filename of the file which was used to construct the header
+	bool headerfiletbMerged; // whether the input file from which header was borrowed was processed by tiebrush
+	int max_sample_id = 0; // current line number of the last sample in the merged header
+	std::map<std::string,std::tuple<int,int,std::string,bool>> sample2lineno; // value: first int is the line number; second int is the linenumber in the input file to which sample correspods; third string is the filename of the corresponding index; fourth bool is true if the sample is the one which donated the header
+	std::pair<std::map<std::string,std::tuple<int,int,std::string,bool>>::iterator,bool> s2l_it; // check for no duplicate samples
+	std::map<int,std::tuple<std::string,int,std::string,bool>> lineno2sample; // value: first string is the sample name; second int is the linenumber in the input file to which sample correspods; third string is the filename of the corresponding index; fourth bool is true if the sample is the one which donated the header
 };
 
 
