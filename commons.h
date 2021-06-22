@@ -20,7 +20,7 @@
 #ifndef TIEBRUSH_COMMONS_H
 #define TIEBRUSH_COMMONS_H
 
-bool parse_pg_sample_line(std::string& line){ // returns true if is sample pg line
+static inline bool parse_pg_sample_line(std::string& line) { // returns true if is sample pg line
     std::stringstream *line_stream = new std::stringstream(line);
     std::string col;
 
@@ -54,7 +54,7 @@ bool parse_pg_sample_line(std::string& line){ // returns true if is sample pg li
     return true;
 }
 
-void load_sample_info(sam_hdr_t* hdr,std::vector<std::string>& info){
+static inline void load_sample_info(sam_hdr_t* hdr,std::vector<std::string>& info){
     bool found_sample_line = false;
     int line_pos = 0;
     std::string line;
@@ -80,15 +80,12 @@ void load_sample_info(sam_hdr_t* hdr,std::vector<std::string>& info){
     }
 }
 
-std::string get_full_path(std::string fname){
+static inline std::string get_full_path(std::string fname) {
     const char *cur_path = fname.c_str();
-    char *actualpath;
-
-
-    actualpath = realpath(cur_path, NULL);
+    char *actualpath = Grealpath(cur_path, NULL);
     if (actualpath != NULL){
         return std::string(actualpath);
-        free(actualpath);
+        GFREE(actualpath);
     }
     else{
         std::cerr<<"could not resolve path: "<<fname<<std::endl;

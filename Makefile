@@ -45,17 +45,17 @@ LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
 # LIBS += -lregex -lws2_32
 #endif
 
-#detect MinGW (Windows environment)
+#detect MinGW/MSYS (Windows environment)
 ifneq (,$(findstring mingw,$(shell ${CXX} -dumpmachine)))
  WINDOWS=1
 endif
 
 # Misc. system commands
-ifdef WINDOWS
- RM = del /Q
-else
- RM = rm -f
-endif
+#ifdef WINDOWS
+# RM = del /Q
+#else
+RM = rm -f
+#endif
 
 # File endings
 ifdef WINDOWS
