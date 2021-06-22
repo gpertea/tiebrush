@@ -134,7 +134,7 @@ public:
         if(index_ss.is_open()){
             index_ss.close();
         }
-        for(int i=0;i<this->tbd_streams.size();i++){
+        for(uint i=0;i<this->tbd_streams.size();i++){
             delete this->tbd_streams[i];
         }
     };
@@ -157,7 +157,7 @@ public:
 
     void init(std::vector<int>& lst){ // initializes file streams to the begining of each sample
         // initialize a vector of ifstreams and seek to the starting byte of each sample
-        for(int i=0;i<lst.size();i++){ // for each requested sample in the list
+        for(uint i=0;i<lst.size();i++){ // for each requested sample in the list
             std::fstream* nss;
             this->tbd_streams.push_back(nss);
 
@@ -171,7 +171,7 @@ public:
     }
 
     void next(uint32_t &dup_val, std::vector<int>& samples) { // lst is the list of samples for which to extract the values
-        for(int i=0;i<this->tbd_streams.size();i++){
+        for(uint i=0;i<this->tbd_streams.size();i++){
             if (!this->tbd_streams[i]->is_open() || !this->tbd_streams[i]->good())
                 GError("Warning: Index::next() called with no open file.\n");
             char buffer[4];

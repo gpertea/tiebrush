@@ -259,8 +259,6 @@ bool TInputFiles::add_tb_tag_if_not_exists(sam_hdr_t *hdr){ // returns true if t
 
 // removed all lines with matching tags
 void TInputFiles::delete_all_hdr_with_tag(sam_hdr_t *hdr,std::string tag1, std::string tag2){
-    // check if already exists
-    bool found_tb_tag_line = false;
     int line_pos = 0;
     std::string line;
     while(true){
