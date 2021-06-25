@@ -144,10 +144,16 @@ endif
 
 # OBJS += rlink.o tablemaker.o tmerge.o
 
-all release static static-cpp debug: tiebrush tiecov
+all: tiebrush tiecov
+release static static-cpp debug: tiebrush tiecov
 memcheck memdebug tsan tcheck thrcheck: tiebrush tiecov
 memuse memusage memtrace: tiebrush tiecov
-#nothreads: tiebrush${EXE}
+
+test: tiebrush tiecov
+	cd test && ./run_tests.sh
+
+valgrind: tiebrush tiecov
+	cd test && ./run_valgrind.sh
 
 GSam.o : GSam.h
 tiebrush.o : GSam.h tmerge.h
@@ -174,7 +180,7 @@ tiecov: ${BWLIB}/libBigWig.a ${HTSLIB}/libhts.a $(COVOBJS) tiecov.o
 
 #test demo tests: tiebrush
 #	@./run_tests.sh
-.PHONY : clean cleanall cleanAll allclean
+.PHONY : clean cleanall cleanAll allclean test valgrind
 
 # target for removing all object files
 
