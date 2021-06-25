@@ -69,24 +69,6 @@ struct CJunc {
 	bool operator==(const CJunc& a) {
 		return (strand==a.strand && start==a.start && end==a.end);
 	}
-//	bool operator<(const CJunc& a) { // sort no strand
-//		if (start==a.start) return (end<a.end);
-//		else return (start<a.start);
-//	}
-
-//    bool operator<(const CJunc& a) { // sort by strand first
-//        if (strand==a.strand){
-//            if (start==a.start){
-//                return (end<a.end);
-//            }
-//            else{
-//                return (start<a.start);
-//            }
-//        }
-//        else{
-//            return strand<a.strand;
-//        }
-//    }
 
     bool operator<(const CJunc& a) { // sort by strand last
         if (start==a.start){
@@ -210,7 +192,7 @@ void move2bsam(std::vector<std::set<int>>& bvec_idx,std::vector<std::pair<float,
 
 //b_start MUST be passed 1-based
 void addCov(GSamRecord& r, int val, GVec<uint64_t>& bvec, int b_start) {
-	bam1_t* in_rec=r.get_b();
+    bam1_t* in_rec=r.get_b();
     int pos=in_rec->core.pos; // 0-based
     b_start--; //to make it 0-based
     for (uint8_t c=0;c<in_rec->core.n_cigar;++c){
@@ -447,24 +429,23 @@ int main(int argc, char *argv[])  {
     int b_end=0; //bundle start, end (1-based)
     int b_start=0; //1 based
     GSamRecord brec;
-	while (samreader.next(brec)) {
+    while (samreader.next(brec)) {
         //uint32_t dupcount=0;
         std::vector<int> cur_samples;
         int endpos=brec.end;
         if (brec.refId()!=prev_tid || (int)brec.start>b_end) {
-            if (coutf) {
-                flushCoverage(coutf,samreader.header(), bcov, prev_tid, b_start);
-            }
-            if(coutf_bw){
-                flushCoverage(coutf_bw,samreader.header(), bcov, prev_tid, b_start);
-            }
-            if (soutf) {
-                discretize(bsam);
-                normalize(bsam,0.1,1.5,sample_info.size());
-                flushCoverage(soutf,samreader.header(),bsam,prev_tid,b_start);
-            }
-            if (joutf) {
-                flushJuncs(joutf, samreader.refName(prev_tid));
+            if (prev_tid>=0) {
+              if (coutf)
+                  flushCoverage(coutf,samreader.header(), bcov, prev_tid, b_start);
+              if(coutf_bw)
+                  flushCoverage(coutf_bw,samreader.header(), bcov, prev_tid, b_start);
+              if (soutf) {
+                  discretize(bsam);
+                  normalize(bsam,0.1,1.5,sample_info.size());
+                  flushCoverage(soutf,samreader.header(),bsam,prev_tid,b_start);
+              }
+              if (joutf)
+                  flushJuncs(joutf, samreader.refName(prev_tid));
             }
             b_start=brec.start;
             b_end=endpos;
