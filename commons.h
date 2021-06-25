@@ -84,8 +84,9 @@ static inline std::string get_full_path(std::string fname) {
     const char *cur_path = fname.c_str();
     char *actualpath = Grealpath(cur_path, NULL);
     if (actualpath != NULL){
-        return std::string(actualpath);
+        std::string r(actualpath);
         GFREE(actualpath);
+        return r;
     }
     else{
         std::cerr<<"could not resolve path: "<<fname<<std::endl;
