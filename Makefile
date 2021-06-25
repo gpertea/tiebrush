@@ -4,6 +4,7 @@ GDIR := ../gclib
 HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
+LIBBZ2 := ${HTSLIB}/xlibs/lib/libbz2.a
 LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
 INCDIRS := -I. -I${GDIR} -I${HTSLIB}
 
@@ -34,7 +35,7 @@ LINKER  := $(if $(LINKER),$(LINKER),g++)
 
 LDFLAGS := $(if $(LDFLAGS),$(LDFLAGS),-g)
 
-LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
+LIBS := ${HTSLIB}/libhts.a ${LIBBZ2} ${LIBLZMA} ${LIBDEFLATE} -lz -lm -lpthread
 
 #ifneq (,$(findstring nothreads,$(MAKECMDGOALS)))
 # NOTHREADS=1
@@ -67,7 +68,7 @@ endif
 
 DMACH := $(shell ${CXX} -dumpmachine)
 
-ifneq (,$(filter %release %static, $(MAKECMDGOALS)))
+ifneq (,$(filter %release %static %static-cpp, $(MAKECMDGOALS)))
   # -- release build
   RELEASE_BUILD=1
   CXXFLAGS := $(if $(CXXFLAGS),$(CXXFLAGS),-g -O2)
@@ -109,26 +110,25 @@ else
 endif
 
 ifdef RELEASE_BUILD
- ifneq (,$(findstring static, $(MAKECMDGOALS)))
-    STATIC_CLIB=1
+ ifneq ($(findstring static,$(MAKECMDGOALS)),) 
+  # static or static-cpp found
+  ifneq ($(findstring static-cpp,$(MAKECMDGOALS)),) 
+     #not a full static build, only c/c++ libs
+     LDFLAGS := -static-libgcc -static-libstdc++ ${LDFLAGS}
+  else
+     #full static build
+     LDFLAGS := -static -static-libgcc -static-libstdc++ ${LDFLAGS}
+  endif
  endif
 endif
 
-ifdef STATIC_CLIB
- LDFLAGS += -static-libgcc -static-libstdc++
-endif
-
-ifdef DEBUG_BUILD
-  #$(warning Building DEBUG version of tiebrush.. )
-  DBG_WARN=@echo
-  DBG_WARN+='WARNING: built DEBUG version, use "make clean release" for a faster version of the program.'
-endif
+#ifdef DEBUG_BUILD
+#  DBG_WARN=@echo
+#  DBG_WARN+='WARNING: built DEBUG version, use "make clean release" for a faster version of the program.'
+#endif
 
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./tmerge.o ./GSam.o
 COVOBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o
-
-#OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o ./GSam.o \
-# ${GDIR}/gdna.o ${GDIR}/codons.o ${GDIR}/GFastaIndex.o ${GDIR}/GFaSeqGet.o
 
 ifneq (,$(filter %memtrace %memusage %memuse, $(MAKECMDGOALS)))
     CXXFLAGS += -DGMEMTRACE
@@ -144,7 +144,7 @@ endif
 
 # OBJS += rlink.o tablemaker.o tmerge.o
 
-all release static debug: tiebrush tiecov
+all release static static-cpp debug: tiebrush tiecov
 memcheck memdebug tsan tcheck thrcheck: tiebrush tiecov
 memuse memusage memtrace: tiebrush tiecov
 #nothreads: tiebrush${EXE}
