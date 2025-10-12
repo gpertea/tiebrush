@@ -34,16 +34,16 @@ const char* USAGE="TieCov v" VERSION "\n"
 " Optional arguments (at least one of -s/-c/-j must be specified):\n"
 "  -h,--help\tShow this help message and exit\n"
 "  --version\tShow program version and exit\n"
-"  -s\t\tBedGraph file with an estimate of the number of samples\n"
-"    \t\twhich contain alignments for each interval.\n"
-"  -c\t\tBedGraph (or BedWig with '-W') file with coverage\n"
-"    \t\tfor all mapped bases.\n"
-"  -j\t\tBED file with coverage of all splice-junctions\n"
-"    \t\tin the input file.\n"
-"  -W\t\tsave coverage in BigWig format. Default output\n"
-"    \t\tis in Bed format\n"
-"  -z\t\t(minZoom) set the first BigWig zoom tile size (e.g. 32, 64).\n";
-
+"  -s\tBedGraph file with an estimate of the number of samples\n"
+"    \twhich contain alignments for each interval.\n"
+"  -c\tBedGraph (or BigWig with '-W') file with coverage\n"
+"    \tfor all mapped bases.\n"
+"  -j\tBED file with coverage of all splice-junctions\n"
+"    \tin the input file.\n"
+"  -W\tsave coverage in BigWig format. Default output\n"
+"    \tis in Bed format\n"
+"  -z\tfor -W, set the first BigWig zoom tile size (e.g. 16, 32, 64)\n"
+"    \t(default: 32)\n";
 GStr covfname, jfname, infname, sfname;
 FILE* coutf=NULL;
 FILE* joutf=NULL;
@@ -59,7 +59,7 @@ std::vector<std::string> sample_info; // holds data about samples from the heade
 bool verbose=false;
 bool bigwig=false;
 int juncCount=0;
-static uint32_t bw_minzoom = 0; // -z override for first BigWig zoom level
+static uint32_t bw_minzoom = 32; // -z override for first BigWig zoom level
 
 struct CJunc {
 	int start, end;
@@ -376,7 +376,7 @@ int main(int argc, char *argv[])  {
                if (bw_minzoom > 0) {
                    bwSetMinZoom(bw_minzoom);
                    if (verbose)
-                       fprintf(stderr, "BigWig min zoom set to %u\n", bw_minzoom);
+                       fprintf(stderr, "BigWig min zoom tile size set to %u\n", bw_minzoom);
                }
                coutf_bw = bwOpen((char*)covfname_bw.chars(), NULL, "w");
                if(!coutf_bw) {
@@ -444,7 +444,6 @@ int main(int argc, char *argv[])  {
         if (brec.isUnmapped()) {
             continue;
         }
-
         //uint32_t dupcount=0;
         std::vector<int> cur_samples;
         int endpos=brec.end;
@@ -576,6 +575,9 @@ void processOptions(int argc, char* argv[]) {
     if (zopt) {
         long v = strtol(zopt, NULL, 10);
         if (v > 0) bw_minzoom = (uint32_t)v;
+        if (!bigwig) {
+            GMessage("Warning: -z option ignored, requires -W (BigWig) output.\n");
+        }
     }
 
     if (args.startNonOpt()==0) {
