@@ -41,7 +41,8 @@ const char* USAGE="TieCov v" VERSION "\n"
 "  -j\t\tBED file with coverage of all splice-junctions\n"
 "    \t\tin the input file.\n"
 "  -W\t\tsave coverage in BigWig format. Default output\n"
-"    \t\tis in Bed format\n";
+"    \t\tis in Bed format\n"
+"  -z\t\t(minZoom) set the first BigWig zoom tile size (e.g. 32, 64).\n";
 
 GStr covfname, jfname, infname, sfname;
 FILE* coutf=NULL;
@@ -58,6 +59,7 @@ std::vector<std::string> sample_info; // holds data about samples from the heade
 bool verbose=false;
 bool bigwig=false;
 int juncCount=0;
+static uint32_t bw_minzoom = 0; // -z override for first BigWig zoom level
 
 struct CJunc {
 	int start, end;
@@ -370,6 +372,12 @@ int main(int argc, char *argv[])  {
                    fprintf(stderr, "Received an error in bwInit\n");
                    return 1;
                }
+               // apply -z override for first zoom level, if provided
+               if (bw_minzoom > 0) {
+                   bwSetMinZoom(bw_minzoom);
+                   if (verbose)
+                       fprintf(stderr, "BigWig min zoom set to %u\n", bw_minzoom);
+               }
                coutf_bw = bwOpen((char*)covfname_bw.chars(), NULL, "w");
                if(!coutf_bw) {
                    fprintf(stderr, "An error occurred while opening example_output.bw for writing\n");
@@ -530,7 +538,7 @@ int main(int argc, char *argv[])  {
 }// <------------------ main() end -----
 
 void processOptions(int argc, char* argv[]) {
-    GArgs args(argc, argv, "help;verbose;version;DVWhc:s:j:");
+    GArgs args(argc, argv, "help;verbose;version;DVWhc:s:j:z:");
     args.printError(USAGE, true);
     if (args.getOpt('h') || args.getOpt("help")) {
         GMessage(USAGE);
@@ -563,11 +571,18 @@ void processOptions(int argc, char* argv[]) {
     jfname_bw=args.getOpt('j');
     sfname_bw=args.getOpt('s');
 
+    // parse -z (min zoom override)
+    const char* zopt = args.getOpt('z');
+    if (zopt) {
+        long v = strtol(zopt, NULL, 10);
+        if (v > 0) bw_minzoom = (uint32_t)v;
+    }
+
     if (args.startNonOpt()==0) {
         GMessage(USAGE);
         GMessage("\nError: no input file provided!\n");
         exit(1);
     }
-    
+
     infname=args.nextNonOpt();
 }
