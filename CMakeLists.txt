@@ -122,6 +122,8 @@ ExternalProject_Add(libBigWig
     SOURCE_DIR "${CMAKE_SOURCE_DIR}/include/libBigWig"
     BUILD_IN_SOURCE 1
     CONFIGURE_COMMAND ""
+    # Apply local minZoom patch after extraction, before build
+    PATCH_COMMAND patch -p0 -N -i ${CMAKE_SOURCE_DIR}/cmake/patches/libBigWig-minzoom.patch
     # Clean and build static lib, forcing HAVE_CURL=NO so Makefile adds -DNOCURL
     BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} clean && ${CMAKE_MAKE_PROGRAM} HAVE_CURL=NO libBigWig.a
     INSTALL_COMMAND ""
